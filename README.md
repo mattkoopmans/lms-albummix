@@ -73,4 +73,4 @@ Right-click any album while a mix is active and select **Stop Album Mix**, or si
 
 ## Licence
 
-MIT
+GPL 3.0
