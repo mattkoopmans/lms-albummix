@@ -15,11 +15,12 @@ use JSON::XS::VersionOneAndTwo;
 use URI::Escape qw(uri_escape_utf8);
 
 use constant LASTFM_API_BASE      => 'https://ws.audioscrobbler.com/2.0/';
-use constant DEFAULT_MAX_HISTORY  => 50;
-use constant DEFAULT_LOOKAHEAD    => 2;
-use constant MAX_SIMILAR_TRACKS   => 50;   # candidates from track.getSimilar
-use constant MAX_SIMILAR_ARTISTS  => 20;   # fallback: artist.getSimilar
-use constant MAX_TOP_ALBUMS       => 10;   # fallback: artist.getTopAlbums
+use constant DEFAULT_MAX_HISTORY      => 50;
+use constant DEFAULT_LOOKAHEAD        => 2;
+use constant DEFAULT_ARTIST_COOLDOWN  => 5;    # skip artist for N album picks after playing
+use constant MAX_SIMILAR_TRACKS       => 50;   # candidates from track.getSimilar
+use constant MAX_SIMILAR_ARTISTS      => 20;   # fallback: artist.getSimilar
+use constant MAX_TOP_ALBUMS           => 10;   # fallback: artist.getTopAlbums
 
 my $log = Slim::Utils::Log->addLogCategory({
 	'category'     => 'plugin.albummix',
@@ -38,10 +39,12 @@ sub initPlugin {
 	$class->SUPER::initPlugin(@_);
 
 	$prefs->init({
-		lastfm_api_key => '',
-		max_history    => DEFAULT_MAX_HISTORY,
-		prefer_local   => 1,
-		lookahead      => DEFAULT_LOOKAHEAD,
+		lastfm_api_key    => '',
+		max_history       => DEFAULT_MAX_HISTORY,
+		prefer_local      => 1,
+		discover_new      => 0,
+		lookahead         => DEFAULT_LOOKAHEAD,
+		artist_cooldown   => DEFAULT_ARTIST_COOLDOWN,
 	});
 
 	# Load and register the settings page
@@ -223,6 +226,7 @@ sub startAlbumMix {
 	$playerState{$clientId} = {
 		active              => 1,
 		history             => [],
+		artist_history      => [],   # recent artists for cooldown enforcement
 		seedArtist          => $artistName,
 		seedAlbum           => $albumName,
 		lastAlbumStartIndex => 0,    # playlist index where the last queued album begins
@@ -231,6 +235,7 @@ sub startAlbumMix {
 
 	# Record seed in history
 	_addToHistory($clientId, $artistName, $albumName);
+	_addArtistToHistory($clientId, $artistName);
 
 	# Load the seed album
 	if ( $albumId ) {
@@ -298,9 +303,9 @@ sub onPlaylistChange {
 # Similar album discovery via Last.fm
 #
 # Primary:  track.getSimilar on the second-to-last song of the
-#           current album — finds a sonically similar track,
+#           current album â finds a sonically similar track,
 #           then resolves that track's album.
-# Fallback: artist.getSimilar → artist.getTopAlbums when track
+# Fallback: artist.getSimilar â artist.getTopAlbums when track
 #           similarity returns nothing useful.
 # ============================================================
 
@@ -337,7 +342,7 @@ sub _findNextAlbum {
 			}
 		});
 	} else {
-		# Can't determine current track — fall back to artist similarity
+		# Can't determine current track â fall back to artist similarity
 		$log->info("Album Mix: Could not extract seed track, falling back to artist similarity");
 		_findNextAlbumByArtist($client, $clientId, $state->{seedArtist}, $apiKey);
 	}
@@ -365,706 +370,11 @@ sub _getSeedTrack {
 		my $hi = $albumEnd - 1;
 		$targetIndex = $lo + int(rand($hi - $lo + 1));
 	} elsif ( $albumTrackCount >= 2 ) {
-		# Too few tracks for a proper range — use the second track
+		# Too few tracks for a proper range â use the second track
 		$targetIndex = $albumStart + 1;
 	} else {
-		# Single-track album — use that track
+		# Single-track album â use that track
 		$targetIndex = $albumStart;
 	}
 
-	$log->debug("Album Mix: Seed track — album range [$albumStart..$albumEnd], picked index $targetIndex");
-
-	my $track = Slim::Player::Playlist::track($client, $targetIndex);
-	return unless $track;
-
-	my ( $title, $artist );
-
-	if ( blessed($track) ) {
-		$title = $track->title;
-
-		# Try to get the track's artist
-		if ( $track->can('artistName') ) {
-			$artist = $track->artistName;
-		}
-		if ( !$artist && $track->can('artist') ) {
-			my $a = $track->artist;
-			$artist = $a->name if $a && blessed($a);
-		}
-
-		# Try remote metadata if local metadata is missing
-		if ( (!$title || !$artist) && $track->can('url') ) {
-			my $handler = Slim::Player::ProtocolHandlers->handlerForURL($track->url);
-			if ( $handler && $handler->can('getMetadataFor') ) {
-				my $meta = $handler->getMetadataFor($client, $track->url);
-				if ( $meta ) {
-					$title  ||= $meta->{title};
-					$artist ||= $meta->{artist};
-				}
-			}
-		}
-	}
-
-	return ( $title, $artist );
-}
-
-# ============================================================
-# Primary: track.getSimilar based discovery
-# ============================================================
-
-sub _getSimilarTracks {
-	my ( $client, $clientId, $artist, $track, $apiKey, $callback ) = @_;
-
-	my $url = LASTFM_API_BASE . '?method=track.getSimilar'
-		. '&artist=' . uri_escape_utf8($artist)
-		. '&track='  . uri_escape_utf8($track)
-		. '&limit='  . MAX_SIMILAR_TRACKS
-		. '&autocorrect=1'
-		. '&api_key=' . $apiKey
-		. '&format=json';
-
-	$log->debug("Album Mix: Fetching similar tracks for '$track' by '$artist'");
-
-	Slim::Networking::SimpleAsyncHTTP->new(
-		sub {
-			my $http   = shift;
-			my $result = eval { decode_json($http->content) };
-
-			if ( $@ || !$result ) {
-				$log->warn("Album Mix: JSON parse error: $@");
-				$callback->([]);
-				return;
-			}
-			if ( $result->{error} ) {
-				$log->warn("Album Mix: Last.fm error: $result->{message}");
-				$callback->([]);
-				return;
-			}
-
-			my @tracks;
-			my $similar = $result->{similartracks}->{track} || [];
-			$similar = [$similar] if ref $similar eq 'HASH';
-
-			for my $t ( @$similar ) {
-				next unless $t->{name} && $t->{artist} && $t->{artist}->{name};
-
-				push @tracks, {
-					title  => $t->{name},
-					artist => $t->{artist}->{name},
-					match  => $t->{match} || 0,
-					mbid   => $t->{mbid}  || '',
-				};
-			}
-
-			$log->info("Album Mix: Found " . scalar(@tracks) . " similar tracks");
-			$callback->(\@tracks);
-		},
-		sub {
-			my $http = shift;
-			$log->warn("Album Mix: HTTP error: " . ($http->error || 'unknown'));
-			$callback->([]);
-		},
-		{ timeout => 15 },
-	)->get($url);
-}
-
-# Walk similar tracks and find an album we haven't played yet.
-# For each candidate track, we need to resolve which album it belongs to.
-# Strategy: use Last.fm track.getInfo to get the album, or search locally.
-sub _pickAlbumFromSimilarTracks {
-	my ( $client, $clientId, $similarTracks, $apiKey ) = @_;
-
-	_tryNextSimilarTrack($client, $clientId, $similarTracks, 0, $apiKey);
-}
-
-sub _tryNextSimilarTrack {
-	my ( $client, $clientId, $tracks, $index, $apiKey ) = @_;
-
-	my $state = $playerState{$clientId};
-	return unless $state && $state->{active};
-
-	if ( $index >= scalar @$tracks ) {
-		# Exhausted all similar tracks — fall back to artist similarity
-		$log->info("Album Mix: No suitable album from similar tracks, falling back to artist similarity");
-		_findNextAlbumByArtist($client, $clientId, $state->{seedArtist}, $apiKey);
-		return;
-	}
-
-	my $track = $tracks->[$index];
-	$log->debug("Album Mix: Checking similar track '$track->{title}' by '$track->{artist}' (match: $track->{match})");
-
-	# First, try to resolve the album via track.getInfo (which includes album name)
-	_getTrackAlbum($client, $clientId, $track->{artist}, $track->{title}, $apiKey, sub {
-		my $albumName = shift;
-
-		my $state = $playerState{$clientId};
-		return unless $state && $state->{active};
-
-		if ( $albumName ) {
-			my $key = _historyKey($track->{artist}, $albumName);
-			if ( grep { $_ eq $key } @{$state->{history}} ) {
-				# Already played this album — try next track
-				$log->debug("Album Mix: '$albumName' by '$track->{artist}' already in history, skipping");
-				_tryNextSimilarTrack($client, $clientId, $tracks, $index + 1, $apiKey);
-				return;
-			}
-
-			$log->info("Album Mix: Selected '$albumName' by '$track->{artist}' (via similar track '$track->{title}')");
-
-			$state->{seedArtist} = $track->{artist};
-			$state->{seedAlbum}  = $albumName;
-
-			_addToHistory($clientId, $track->{artist}, $albumName);
-
-			_findAndPlayAlbum($client, $track->{artist}, $albumName, 'add', sub {
-				$state->{pendingLookup} = 0;
-
-				$client->showBriefly({
-					jive => {
-						type  => 'mixed',
-						style => 'add',
-						text  => [ sprintf(
-							cstring($client, 'PLUGIN_ALBUM_MIX_QUEUED'),
-							"$albumName — $track->{artist}"
-						) ],
-					},
-				});
-			});
-		} else {
-			# No album info for this track — try the next similar track
-			_tryNextSimilarTrack($client, $clientId, $tracks, $index + 1, $apiKey);
-		}
-	});
-}
-
-# Resolve a track's album via Last.fm track.getInfo
-sub _getTrackAlbum {
-	my ( $client, $clientId, $artist, $track, $apiKey, $callback ) = @_;
-
-	my $url = LASTFM_API_BASE . '?method=track.getInfo'
-		. '&artist=' . uri_escape_utf8($artist)
-		. '&track='  . uri_escape_utf8($track)
-		. '&autocorrect=1'
-		. '&api_key=' . $apiKey
-		. '&format=json';
-
-	Slim::Networking::SimpleAsyncHTTP->new(
-		sub {
-			my $http   = shift;
-			my $result = eval { decode_json($http->content) };
-
-			if ( $@ || !$result || $result->{error} ) {
-				$callback->(undef);
-				return;
-			}
-
-			my $albumName = undef;
-			if ( $result->{track} && $result->{track}->{album} ) {
-				$albumName = $result->{track}->{album}->{title};
-			}
-
-			if ( $albumName ) {
-				$log->debug("Album Mix: track.getInfo says '$track' is on album '$albumName'");
-			} else {
-				$log->debug("Album Mix: track.getInfo returned no album for '$track'");
-			}
-
-			$callback->($albumName);
-		},
-		sub {
-			$callback->(undef);
-		},
-		{ timeout => 15 },
-	)->get($url);
-}
-
-# ============================================================
-# Fallback: artist.getSimilar → artist.getTopAlbums
-# ============================================================
-
-sub _findNextAlbumByArtist {
-	my ( $client, $clientId, $seedArtist, $apiKey ) = @_;
-
-	my $state = $playerState{$clientId};
-	return unless $state && $state->{active};
-
-	$log->info("Album Mix: Artist fallback — finding artists similar to '$seedArtist'");
-
-	_getSimilarArtists($client, $clientId, $seedArtist, $apiKey, sub {
-		my $similarArtists = shift;
-
-		unless ( $similarArtists && @$similarArtists ) {
-			$log->warn("Album Mix: No similar artists found for '$seedArtist'");
-			$state->{pendingLookup} = 0;
-			return;
-		}
-
-		# Include the seed artist for different-album-by-same-artist results
-		unshift @$similarArtists, {
-			name  => $seedArtist,
-			match => 1.0,
-			mbid  => '',
-		};
-
-		_tryNextArtist($client, $clientId, $similarArtists, 0, $apiKey);
-	});
-}
-
-sub _getSimilarArtists {
-	my ( $client, $clientId, $artist, $apiKey, $callback ) = @_;
-
-	my $url = LASTFM_API_BASE . '?method=artist.getSimilar'
-		. '&artist=' . uri_escape_utf8($artist)
-		. '&limit='  . MAX_SIMILAR_ARTISTS
-		. '&api_key=' . $apiKey
-		. '&format=json';
-
-	Slim::Networking::SimpleAsyncHTTP->new(
-		sub {
-			my $http   = shift;
-			my $result = eval { decode_json($http->content) };
-
-			if ( $@ || !$result ) {
-				$log->warn("Album Mix: JSON parse error: $@");
-				$callback->([]);
-				return;
-			}
-			if ( $result->{error} ) {
-				$log->warn("Album Mix: Last.fm error: $result->{message}");
-				$callback->([]);
-				return;
-			}
-
-			my @artists;
-			my $similar = $result->{similarartists}->{artist} || [];
-			$similar = [$similar] if ref $similar eq 'HASH';
-
-			for my $a ( @$similar ) {
-				push @artists, {
-					name  => $a->{name},
-					match => $a->{match} || 0,
-					mbid  => $a->{mbid}  || '',
-				};
-			}
-
-			$log->info("Album Mix: Found " . scalar(@artists) . " similar artists to '$artist'");
-			$callback->(\@artists);
-		},
-		sub {
-			my $http = shift;
-			$log->warn("Album Mix: HTTP error: " . ($http->error || 'unknown'));
-			$callback->([]);
-		},
-		{ timeout => 15 },
-	)->get($url);
-}
-
-sub _tryNextArtist {
-	my ( $client, $clientId, $artists, $index, $apiKey ) = @_;
-
-	my $state = $playerState{$clientId};
-	return unless $state && $state->{active};
-
-	if ( $index >= scalar @$artists ) {
-		$log->warn("Album Mix: Exhausted all similar artists — no new album found");
-		$state->{pendingLookup} = 0;
-
-		$client->showBriefly({
-			jive => {
-				type  => 'mixed',
-				style => 'add',
-				text  => [ cstring($client, 'PLUGIN_ALBUM_MIX_NO_SIMILAR') ],
-			},
-		});
-		return;
-	}
-
-	my $artist = $artists->[$index];
-	$log->debug("Album Mix: Trying artist '$artist->{name}' (match: $artist->{match})");
-
-	_getTopAlbums($client, $clientId, $artist->{name}, $apiKey, sub {
-		my $albums = shift;
-
-		my $state = $playerState{$clientId};
-		return unless $state && $state->{active};
-
-		my @candidates;
-		for my $album ( @$albums ) {
-			my $key = _historyKey($artist->{name}, $album->{name});
-			unless ( grep { $_ eq $key } @{$state->{history}} ) {
-				push @candidates, {
-					artist => $artist->{name},
-					album  => $album->{name},
-					mbid   => $album->{mbid} || '',
-				};
-			}
-		}
-
-		if ( @candidates ) {
-			my $pick = $candidates[0];
-			$log->info("Album Mix: Selected '$pick->{album}' by '$pick->{artist}' (artist fallback)");
-
-			$state->{seedArtist} = $pick->{artist};
-			$state->{seedAlbum}  = $pick->{album};
-
-			_addToHistory($clientId, $pick->{artist}, $pick->{album});
-
-			_findAndPlayAlbum($client, $pick->{artist}, $pick->{album}, 'add', sub {
-				$state->{pendingLookup} = 0;
-
-				$client->showBriefly({
-					jive => {
-						type  => 'mixed',
-						style => 'add',
-						text  => [ sprintf(
-							cstring($client, 'PLUGIN_ALBUM_MIX_QUEUED'),
-							"$pick->{album} — $pick->{artist}"
-						) ],
-					},
-				});
-			});
-		} else {
-			_tryNextArtist($client, $clientId, $artists, $index + 1, $apiKey);
-		}
-	});
-}
-
-sub _getTopAlbums {
-	my ( $client, $clientId, $artist, $apiKey, $callback ) = @_;
-
-	my $url = LASTFM_API_BASE . '?method=artist.getTopAlbums'
-		. '&artist=' . uri_escape_utf8($artist)
-		. '&limit='  . MAX_TOP_ALBUMS
-		. '&api_key=' . $apiKey
-		. '&format=json';
-
-	Slim::Networking::SimpleAsyncHTTP->new(
-		sub {
-			my $http   = shift;
-			my $result = eval { decode_json($http->content) };
-
-			if ( $@ || !$result ) {
-				$log->warn("Album Mix: JSON parse error for top albums: $@");
-				$callback->([]);
-				return;
-			}
-			if ( $result->{error} ) {
-				$log->warn("Album Mix: Last.fm error: $result->{message}");
-				$callback->([]);
-				return;
-			}
-
-			my @albums;
-			my $topAlbums = $result->{topalbums}->{album} || [];
-			$topAlbums = [$topAlbums] if ref $topAlbums eq 'HASH';
-
-			for my $a ( @$topAlbums ) {
-				next unless $a->{name};
-				next if $a->{name} =~ /^\s*$/;
-				next if lc($a->{name}) eq '(null)';
-
-				push @albums, {
-					name      => $a->{name},
-					mbid      => $a->{mbid}      || '',
-					playcount => $a->{playcount}  || 0,
-				};
-			}
-
-			$log->debug("Album Mix: Found " . scalar(@albums) . " top albums for '$artist'");
-			$callback->(\@albums);
-		},
-		sub {
-			my $http = shift;
-			$log->warn("Album Mix: HTTP error fetching top albums: " . ($http->error || 'unknown'));
-			$callback->([]);
-		},
-		{ timeout => 15 },
-	)->get($url);
-}
-
-# ============================================================
-# Album resolution — find in library or online services
-# ============================================================
-
-sub _findAndPlayAlbum {
-	my ( $client, $artist, $album, $cmd, $callback ) = @_;
-
-	$callback ||= sub {};
-
-	# Record where this album will start in the playlist (for seed track selection)
-	my $clientId = $client->master->id;
-	my $preCount = Slim::Player::Playlist::count($client);
-
-	my $wrappedCallback = sub {
-		# After the album is added, record its start index
-		my $postCount = Slim::Player::Playlist::count($client);
-		if ( my $state = $playerState{$clientId} ) {
-			if ( $cmd eq 'load' ) {
-				$state->{lastAlbumStartIndex} = 0;
-			} else {
-				$state->{lastAlbumStartIndex} = $preCount;
-			}
-			$log->debug("Album Mix: Last album starts at playlist index $state->{lastAlbumStartIndex} (playlist now $postCount tracks)");
-		}
-		$callback->();
-	};
-
-	if ( $prefs->get('prefer_local') ) {
-		_findLocalAlbum($client, $artist, $album, sub {
-			my $localAlbumId = shift;
-
-			if ( $localAlbumId ) {
-				$log->info("Album Mix: Found '$album' in local library (id: $localAlbumId)");
-				$client->execute(['playlistcontrol', "cmd:$cmd", "album_id:$localAlbumId"]);
-				$wrappedCallback->();
-			} else {
-				_findOnlineAlbum($client, $artist, $album, $cmd, $wrappedCallback);
-			}
-		});
-	} else {
-		_findOnlineAlbum($client, $artist, $album, $cmd, $wrappedCallback);
-	}
-}
-
-sub _findLocalAlbum {
-	my ( $client, $artist, $album, $callback ) = @_;
-
-	my $dbh = Slim::Schema->dbh;
-
-	# Exact match
-	my $sth = $dbh->prepare_cached(
-		"SELECT albums.id FROM albums "
-		. "JOIN contributors ON contributors.id = albums.contributor "
-		. "WHERE albums.title = ? AND contributors.name = ? "
-		. "LIMIT 1"
-	);
-	$sth->execute($album, $artist);
-	my ($albumId) = $sth->fetchrow_array;
-	$sth->finish;
-
-	if ( $albumId ) {
-		$callback->($albumId);
-		return;
-	}
-
-	# Case-insensitive match
-	$sth = $dbh->prepare_cached(
-		"SELECT albums.id FROM albums "
-		. "JOIN contributors ON contributors.id = albums.contributor "
-		. "WHERE LOWER(albums.title) = LOWER(?) AND LOWER(contributors.name) = LOWER(?) "
-		. "LIMIT 1"
-	);
-	$sth->execute($album, $artist);
-	($albumId) = $sth->fetchrow_array;
-	$sth->finish;
-
-	if ( $albumId ) {
-		$callback->($albumId);
-		return;
-	}
-
-	# LIKE match for partial titles (e.g. "Album" matches "Album (Deluxe)")
-	$sth = $dbh->prepare_cached(
-		"SELECT albums.id FROM albums "
-		. "JOIN contributors ON contributors.id = albums.contributor "
-		. "WHERE LOWER(albums.title) LIKE ? AND LOWER(contributors.name) LIKE ? "
-		. "LIMIT 1"
-	);
-	$sth->execute( '%' . lc($album) . '%', '%' . lc($artist) . '%' );
-	($albumId) = $sth->fetchrow_array;
-	$sth->finish;
-
-	$callback->($albumId);
-}
-
-sub _findOnlineAlbum {
-	my ( $client, $artist, $album, $cmd, $callback ) = @_;
-
-	$callback ||= sub {};
-
-	$log->info("Album Mix: Searching online services for '$album' by '$artist'");
-
-	my @services = _getAvailableServices();
-
-	if ( @services ) {
-		_tryOnlineService($client, $artist, $album, $cmd, \@services, 0, $callback);
-	} else {
-		# No online services — try local as last resort
-		_findLocalAlbum($client, $artist, $album, sub {
-			my $albumId = shift;
-			if ( $albumId ) {
-				$client->execute(['playlistcontrol', "cmd:$cmd", "album_id:$albumId"]);
-			} else {
-				$log->warn("Album Mix: Could not find '$album' by '$artist' anywhere");
-			}
-			$callback->();
-		});
-	}
-}
-
-sub _getAvailableServices {
-	my @services;
-
-	push @services, 'spotty'
-		if Slim::Utils::PluginManager->isEnabled('Plugins::Spotty::Plugin');
-
-	push @services, 'tidal'
-		if Slim::Utils::PluginManager->isEnabled('Plugins::TIDAL::Plugin');
-
-	push @services, 'qobuz'
-		if Slim::Utils::PluginManager->isEnabled('Plugins::Qobuz::Plugin');
-
-	push @services, 'deezer'
-		if Slim::Utils::PluginManager->isEnabled('Plugins::Deezer::Plugin');
-
-	return @services;
-}
-
-sub _tryOnlineService {
-	my ( $client, $artist, $album, $cmd, $services, $index, $callback ) = @_;
-
-	$callback ||= sub {};
-
-	if ( $index >= scalar @$services ) {
-		$log->info("Album Mix: No online service had '$album' by '$artist'");
-		$callback->();
-		return;
-	}
-
-	my $service = $services->[$index];
-	$log->debug("Album Mix: Trying $service");
-
-	my $handler = {
-		spotty => \&_searchSpotty,
-		tidal  => \&_searchTidal,
-	}->{$service};
-
-	if ( $handler ) {
-		$handler->($client, $artist, $album, $cmd, sub {
-			my $found = shift;
-			if ( $found ) {
-				$callback->();
-			} else {
-				_tryOnlineService($client, $artist, $album, $cmd, $services, $index + 1, $callback);
-			}
-		});
-	} else {
-		_tryOnlineService($client, $artist, $album, $cmd, $services, $index + 1, $callback);
-	}
-}
-
-sub _searchSpotty {
-	my ( $client, $artist, $album, $cmd, $callback ) = @_;
-
-	eval {
-		if ( Plugins::Spotty::Plugin->can('getAPIHandler') ) {
-			my $api = Plugins::Spotty::Plugin->getAPIHandler($client);
-			if ( $api && $api->can('search') ) {
-				$api->search(sub {
-					my $results = shift;
-
-					if ( ref $results eq 'HASH' && $results->{albums} && ref $results->{albums} eq 'HASH' && $results->{albums}->{items} ) {
-						for my $item ( @{$results->{albums}->{items}} ) {
-							if ( $item->{uri} ) {
-								$log->info("Album Mix: Found on Spotify: $item->{name}");
-								$client->execute([
-									'playlist',
-									$cmd eq 'load' ? 'play' : 'add',
-									$item->{uri},
-								]);
-								$callback->(1);
-								return;
-							}
-						}
-					}
-
-					$callback->(0);
-				}, {
-					search => "album:$album artist:$artist",
-					type   => 'albums',
-					limit  => 5,
-				});
-				return;
-			}
-		}
-		$callback->(0);
-	};
-
-	if ( $@ ) {
-		$log->debug("Album Mix: Spotty search error: $@");
-		$callback->(0);
-	}
-}
-
-sub _searchTidal {
-	my ( $client, $artist, $album, $cmd, $callback ) = @_;
-
-	eval {
-		if ( Plugins::TIDAL::Plugin->can('getAPIHandler') ) {
-			my $api = Plugins::TIDAL::Plugin->getAPIHandler($client);
-			if ( $api && $api->can('search') ) {
-				$api->search(sub {
-					my $results = shift;
-
-					my @items;
-					if ( ref $results eq 'HASH' && $results->{albums} ) {
-						@items = ref $results->{albums} eq 'ARRAY'
-							? @{$results->{albums}}
-							: (ref $results->{albums} eq 'HASH' && $results->{albums}->{items}
-								? @{$results->{albums}->{items}} : ());
-					}
-
-					for my $item ( @items ) {
-						if ( my $id = $item->{id} ) {
-							$log->info("Album Mix: Found on TIDAL: " . ($item->{title} || $id));
-							$client->execute([
-								'playlist',
-								$cmd eq 'load' ? 'play' : 'add',
-								"tidal://$id.flac",
-							]);
-							$callback->(1);
-							return;
-						}
-					}
-
-					$callback->(0);
-				}, {
-					search => "$artist $album",
-					type   => 'albums',
-					limit  => 5,
-				});
-				return;
-			}
-		}
-		$callback->(0);
-	};
-
-	if ( $@ ) {
-		$log->debug("Album Mix: TIDAL search error: $@");
-		$callback->(0);
-	}
-}
-
-# ============================================================
-# History management
-# ============================================================
-
-sub _historyKey {
-	my ( $artist, $album ) = @_;
-	return lc("$artist|||$album");
-}
-
-sub _addToHistory {
-	my ( $clientId, $artist, $album ) = @_;
-
-	my $state = $playerState{$clientId} || return;
-	my $key = _historyKey($artist, $album);
-	my $maxHistory = $prefs->get('max_history') || DEFAULT_MAX_HISTORY;
-
-	push @{$state->{history}}, $key;
-
-	while ( scalar @{$state->{history}} > $maxHistory ) {
-		shift @{$state->{history}};
-	}
-}
-
-1;
+	$log->debug("Album Mix: Seed track â album r²FÆ'VÕ7F'BââFÆ'VÔVæEÒÂ6¶VBæFWGF&vWDæFW"°  ×GG&6²Ò6ÆÓ£¥ÆW#£¥ÆÆ7C£§G&6²F6ÆVçBÂGF&vWDæFW° &WGW&âVæÆW72GG&6³°  ×GFFÆRÂF'F7B°  b&ÆW76VBGG&6²° GFFÆRÒGG&6²ÓçFFÆS°  2G'FòvWBFRG&6²w2'F7@ bGG&6²Óæ6âv'F7DæÖRr° F'F7BÒGG&6²Óæ'F7DæÖS° Ð bF'F7BbbGG&6²Óæ6âv'F7Br° ×FÒGG&6²Óæ'F7C° F'F7BÒFÓææÖRbFbb&ÆW76VBF° Ð  2G'&VÖ÷FRÖWFFFbÆö6ÂÖWFFF2Ö76æp bGFFÆRÇÂF'F7BbbGG&6²Óæ6âwW&Âr° ×FæFÆW"Ò6ÆÓ£¥ÆW#£¥&÷Fö6öÄæFÆW'2ÓææFÆW$f÷%U$ÂGG&6²ÓçW&Â° bFæFÆW"bbFæFÆW"Óæ6âvvWDÖWFFFf÷"r° ×FÖWFÒFæFÆW"ÓævWDÖWFFFf÷"F6ÆVçBÂGG&6²ÓçW&Â° bFÖWF° GFFÆRÇÃÒFÖWFÓç·FFÆWÓ° F'F7BÇÃÒFÖWFÓç¶'F7GÓ° Ð Ð Ð Ð  &WGW&âGFFÆRÂF'F7B°§Ð ¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ¢2&Ö'¢G&6²ævWE6ÖÆ"&6VBF66÷fW'¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ §7V"övWE6ÖÆ%G&6·2° ×F6ÆVçBÂF6ÆVçDBÂF'F7BÂGG&6²ÂF¶WÂF6ÆÆ&6²Òó°  ×GW&ÂÒÄ5DdÕôô$4RâsöÖWFöC×G&6²ævWE6ÖÆ"p ârf'F7CÒrâW&öW66U÷WFcF'F7B ârgG&6³ÒrâW&öW66U÷WFcGG&6² ârfÆÖCÒrâÔõ4ÔÄ%õE$4µ0 ârfWFö6÷'&V7CÓp ârfö¶WÒrâF¶W ârff÷&ÖCÖ§6öâs°  FÆörÓæFV'Vr$Æ'VÒÖ¢fWF6ær6ÖÆ"G&6·2f÷"rGG&6²r'rF'F7Br"°  6ÆÓ£¤æWGv÷&¶æs£¥6×ÆT7æ4EEÓææWr 7V"° ×FGGÒ6gC° ×G&W7VÇBÒWfÂ²FV6öFUö§6öâFGGÓæ6öçFVçBÓ°  bDÇÂG&W7VÇB° FÆörÓçv&â$Æ'VÒÖ¢¥4ôâ'6RW'&÷#¢D"° F6ÆÆ&6²ÓâµÒ° &WGW&ã° Ð bG&W7VÇBÓç¶W'&÷'Ò° FÆörÓçv&â$Æ'VÒÖ¢Æ7BæfÒW'&÷#¢G&W7VÇBÓç¶ÖW76vWÒ"° F6ÆÆ&6²ÓâµÒ° &WGW&ã° Ð  ×G&6·3° ×G6ÖÆ"ÒG&W7VÇBÓç·6ÖÆ'G&6·7ÒÓç·G&6·ÒÇÂµÓ° G6ÖÆ"Ò²G6ÖÆ%Òb&VbG6ÖÆ"Wt4s°  f÷"×GBG6ÖÆ"° æWBVæÆW72GBÓç¶æÖWÒbbGBÓç¶'F7GÒbbGBÓç¶'F7GÒÓç¶æÖWÓ°  W6G&6·2Â° FFÆRÓâGBÓç¶æÖWÒÀ 'F7BÓâGBÓç¶'F7GÒÓç¶æÖWÒÀ ÖF6ÓâGBÓç¶ÖF6ÒÇÂÀ Ö&BÓâGBÓç¶Ö&GÒÇÂrrÀ Ó° Ð  FÆörÓææfò$Æ'VÒÖ¢f÷VæB"â66Æ"G&6·2â"6ÖÆ"G&6·2"° F6ÆÆ&6²ÓâÄG&6·2° ÒÀ 7V"° ×FGGÒ6gC° FÆörÓçv&â$Æ'VÒÖ¢EEW'&÷#¢"âFGGÓæW'&÷"ÇÂwVæ¶æ÷vâr° F6ÆÆ&6²ÓâµÒ° ÒÀ ²FÖV÷WBÓâRÒÀ ÓævWBGW&Â°§Ð ¢2vÆ²6ÖÆ"G&6·2æBfæBâÆ'VÒvRfVâwBÆVBWBà¢2f÷"V66æFFFRG&6²ÂvRæVVBFò&W6öÇfRv6Æ'VÒB&VÆöæw2Fòà¢27G&FVw¢W6RÆ7BæfÒG&6²ævWDæfòFòvWBFRÆ'VÒÂ÷"6V&6Æö6ÆÇà§7V"÷6´Æ'VÔg&öÕ6ÖÆ%G&6·2° ×F6ÆVçBÂF6ÆVçDBÂG6ÖÆ%G&6·2ÂF¶WÒó°  ÷G'æWE6ÖÆ%G&6²F6ÆVçBÂF6ÆVçDBÂG6ÖÆ%G&6·2ÂÂF¶W°§Ð §7V"÷G'æWE6ÖÆ%G&6²° ×F6ÆVçBÂF6ÆVçDBÂGG&6·2ÂFæFWÂF¶WÒó°  ×G7FFRÒGÆW%7FFW²F6ÆVçDGÓ° &WGW&âVæÆW72G7FFRbbG7FFRÓç¶7FfWÓ°  bFæFWãÒ66Æ"GG&6·2° 2WW7FVBÆÂ6ÖÆ"G&6·2(	BfÆÂ&6²Fò'F7B6ÖÆ&G FÆörÓææfò$Æ'VÒÖ¢æò7VF&ÆRÆ'VÒg&öÒ6ÖÆ"G&6·2ÂfÆÆær&6²Fò'F7B6ÖÆ&G"° öfæDæWDÆ'VÔ''F7BF6ÆVçBÂF6ÆVçDBÂG7FFRÓç·6VVD'F7GÒÂF¶W° &WGW&ã° Ð  ×GG&6²ÒGG&6·2Óå²FæFWÓ° FÆörÓæFV'Vr$Æ'VÒÖ¢6V6¶ær6ÖÆ"G&6²rGG&6²Óç·FFÆWÒr'rGG&6²Óç¶'F7GÒrÖF6¢GG&6²Óç¶ÖF6Ò"°  2f'7BÂG'Fò&W6öÇfRFRÆ'VÒfG&6²ævWDæfòv6æ6ÇVFW2Æ'VÒæÖR övWEG&6´Æ'VÒF6ÆVçBÂF6ÆVçDBÂGG&6²Óç¶'F7GÒÂGG&6²Óç·FFÆWÒÂF¶WÂ7V"° ×FÆ'VÔæÖRÒ6gC°  ×G7FFRÒGÆW%7FFW²F6ÆVçDGÓ° &WGW&âVæÆW72G7FFRbbG7FFRÓç¶7FfWÓ°  bFÆ'VÔæÖR° ×F¶WÒö7F÷'¶WGG&6²Óç¶'F7GÒÂFÆ'VÔæÖR° bw&W²EòWF¶WÒ²G7FFRÓç¶7F÷'×Ò° 2Ç&VGÆVBF2Æ'VÒ(	BG'æWBG&6° FÆörÓæFV'Vr$Æ'VÒÖ¢rFÆ'VÔæÖRr'rGG&6²Óç¶'F7GÒrÇ&VGâ7F÷'Â6¶ær"° ÷G'æWE6ÖÆ%G&6²F6ÆVçBÂF6ÆVçDBÂGG&6·2ÂFæFW²ÂF¶W° &WGW&ã° Ð  2'F7B6ööÆF÷vâ(	B6¶bF2'F7Bv26¶VBFöò&V6VçFÇ bö4'F7Döä6ööÆF÷vâF6ÆVçDBÂGG&6²Óç¶'F7GÒ° FÆörÓæFV'Vr$Æ'VÒÖ¢rGG&6²Óç¶'F7GÒröâ6ööÆF÷vâÂ6¶ærrFÆ'VÔæÖRr"° ÷G'æWE6ÖÆ%G&6²F6ÆVçBÂF6ÆVçDBÂGG&6·2ÂFæFW²ÂF¶W° &WGW&ã° Ð  FÆörÓææfò$Æ'VÒÖ¢6VÆV7FVBrFÆ'VÔæÖRr'rGG&6²Óç¶'F7GÒrf6ÖÆ"G&6²rGG&6²Óç·FFÆWÒr"°  G7FFRÓç·6VVD'F7GÒÒGG&6²Óç¶'F7GÓ° G7FFRÓç·6VVDÆ'V×ÒÒFÆ'VÔæÖS°  öFEFô7F÷'F6ÆVçDBÂGG&6²Óç¶'F7GÒÂFÆ'VÔæÖR° öFD'F7EFô7F÷'F6ÆVçDBÂGG&6²Óç¶'F7GÒ°  öfæDæEÆÆ'VÒF6ÆVçBÂGG&6²Óç¶'F7GÒÂFÆ'VÔæÖRÂvFBrÂ7V"° G7FFRÓç·VæFætÆöö·WÒÒ°  F6ÆVçBÓç6÷t'&VfÇ° ¦fRÓâ° GRÓâvÖVBrÀ 7GÆRÓâvFBrÀ FWBÓâ²7&çFb 77G&ærF6ÆVçBÂuÅTtåôÄ%TÕôÔõTUTTBrÀ "FÆ'VÔæÖR(	BGG&6²Óç¶'F7GÒ  ÒÀ ÒÀ Ò° Ò° ÒVÇ6R° 2æòÆ'VÒæfòf÷"F2G&6²(	BG'FRæWB6ÖÆ"G&6° ÷G'æWE6ÖÆ%G&6²F6ÆVçBÂF6ÆVçDBÂGG&6·2ÂFæFW²ÂF¶W° Ð Ò°§Ð ¢2&W6öÇfRG&6²w2Æ'VÒfÆ7BæfÒG&6²ævWDæfð§7V"övWEG&6´Æ'VÒ° ×F6ÆVçBÂF6ÆVçDBÂF'F7BÂGG&6²ÂF¶WÂF6ÆÆ&6²Òó°  ×GW&ÂÒÄ5DdÕôô$4RâsöÖWFöC×G&6²ævWDæfòp ârf'F7CÒrâW&öW66U÷WFcF'F7B ârgG&6³ÒrâW&öW66U÷WFcGG&6² ârfWFö6÷'&V7CÓp ârfö¶WÒrâF¶W ârff÷&ÖCÖ§6öâs°  6ÆÓ£¤æWGv÷&¶æs£¥6×ÆT7æ4EEÓææWr 7V"° ×FGGÒ6gC° ×G&W7VÇBÒWfÂ²FV6öFUö§6öâFGGÓæ6öçFVçBÓ°  bDÇÂG&W7VÇBÇÂG&W7VÇBÓç¶W'&÷'Ò° F6ÆÆ&6²ÓâVæFVb° &WGW&ã° Ð  ×FÆ'VÔæÖRÒVæFVc° bG&W7VÇBÓç·G&6·ÒbbG&W7VÇBÓç·G&6·ÒÓç¶Æ'V×Ò° FÆ'VÔæÖRÒG&W7VÇBÓç·G&6·ÒÓç¶Æ'V×ÒÓç·FFÆWÓ° Ð  bFÆ'VÔæÖR° FÆörÓæFV'Vr$Æ'VÒÖ¢G&6²ævWDæfò62rGG&6²r2öâÆ'VÒrFÆ'VÔæÖRr"° ÒVÇ6R° FÆörÓæFV'Vr$Æ'VÒÖ¢G&6²ævWDæfò&WGW&æVBæòÆ'VÒf÷"rGG&6²r"° Ð  F6ÆÆ&6²ÓâFÆ'VÔæÖR° ÒÀ 7V"° F6ÆÆ&6²ÓâVæFVb° ÒÀ ²FÖV÷WBÓâRÒÀ ÓævWBGW&Â°§Ð ¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ¢2fÆÆ&6³¢'F7BævWE6ÖÆ"(i"'F7BævWEF÷Æ'V×0¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ §7V"öfæDæWDÆ'VÔ''F7B° ×F6ÆVçBÂF6ÆVçDBÂG6VVD'F7BÂF¶WÒó°  ×G7FFRÒGÆW%7FFW²F6ÆVçDGÓ° &WGW&âVæÆW72G7FFRbbG7FFRÓç¶7FfWÓ°  FÆörÓææfò$Æ'VÒÖ¢'F7BfÆÆ&6²(	BfæFær'F7G26ÖÆ"FòrG6VVD'F7Br"°  övWE6ÖÆ$'F7G2F6ÆVçBÂF6ÆVçDBÂG6VVD'F7BÂF¶WÂ7V"° ×G6ÖÆ$'F7G2Ò6gC°  VæÆW72G6ÖÆ$'F7G2bbG6ÖÆ$'F7G2° FÆörÓçv&â$Æ'VÒÖ¢æò6ÖÆ"'F7G2f÷VæBf÷"rG6VVD'F7Br"° G7FFRÓç·VæFætÆöö·WÒÒ° &WGW&ã° Ð  2æ6ÇVFRFR6VVB'F7Bf÷"FffW&VçBÖÆ'VÒÖ'×6ÖRÖ'F7B&W7VÇG0 Vç6gBG6ÖÆ$'F7G2Â° æÖRÓâG6VVD'F7BÀ ÖF6ÓâãÀ Ö&BÓârrÀ Ó°  ÷G'æWD'F7BF6ÆVçBÂF6ÆVçDBÂG6ÖÆ$'F7G2ÂÂF¶W° Ò°§Ð §7V"övWE6ÖÆ$'F7G2° ×F6ÆVçBÂF6ÆVçDBÂF'F7BÂF¶WÂF6ÆÆ&6²Òó°  ×GW&ÂÒÄ5DdÕôô$4RâsöÖWFöCÖ'F7BævWE6ÖÆ"p ârf'F7CÒrâW&öW66U÷WFcF'F7B ârfÆÖCÒrâÔõ4ÔÄ%ô%D5E0 ârfö¶WÒrâF¶W ârff÷&ÖCÖ§6öâs°  6ÆÓ£¤æWGv÷&¶æs£¥6×ÆT7æ4EEÓææWr 7V"° ×FGGÒ6gC° ×G&W7VÇBÒWfÂ²FV6öFUö§6öâFGGÓæ6öçFVçBÓ°  bDÇÂG&W7VÇB° FÆörÓçv&â$Æ'VÒÖ¢¥4ôâ'6RW'&÷#¢D"° F6ÆÆ&6²ÓâµÒ° &WGW&ã° Ð bG&W7VÇBÓç¶W'&÷'Ò° FÆörÓçv&â$Æ'VÒÖ¢Æ7BæfÒW'&÷#¢G&W7VÇBÓç¶ÖW76vWÒ"° F6ÆÆ&6²ÓâµÒ° &WGW&ã° Ð  ×'F7G3° ×G6ÖÆ"ÒG&W7VÇBÓç·6ÖÆ&'F7G7ÒÓç¶'F7GÒÇÂµÓ° G6ÖÆ"Ò²G6ÖÆ%Òb&VbG6ÖÆ"Wt4s°  f÷"×FG6ÖÆ"° W6'F7G2Â° æÖRÓâFÓç¶æÖWÒÀ ÖF6ÓâFÓç¶ÖF6ÒÇÂÀ Ö&BÓâFÓç¶Ö&GÒÇÂrrÀ Ó° Ð  FÆörÓææfò$Æ'VÒÖ¢f÷VæB"â66Æ"'F7G2â"6ÖÆ"'F7G2FòrF'F7Br"° F6ÆÆ&6²ÓâÄ'F7G2° ÒÀ 7V"° ×FGGÒ6gC° FÆörÓçv&â$Æ'VÒÖ¢EEW'&÷#¢"âFGGÓæW'&÷"ÇÂwVæ¶æ÷vâr° F6ÆÆ&6²ÓâµÒ° ÒÀ ²FÖV÷WBÓâRÒÀ ÓævWBGW&Â°§Ð §7V"÷G'æWD'F7B° ×F6ÆVçBÂF6ÆVçDBÂF'F7G2ÂFæFWÂF¶WÒó°  ×G7FFRÒGÆW%7FFW²F6ÆVçDGÓ° &WGW&âVæÆW72G7FFRbbG7FFRÓç¶7FfWÓ°  bFæFWãÒ66Æ"F'F7G2° FÆörÓçv&â$Æ'VÒÖ¢WW7FVBÆÂ6ÖÆ"'F7G2(	BæòæWrÆ'VÒf÷VæB"° G7FFRÓç·VæFætÆöö·WÒÒ°  F6ÆVçBÓç6÷t'&VfÇ° ¦fRÓâ° GRÓâvÖVBrÀ 7GÆRÓâvFBrÀ FWBÓâ²77G&ærF6ÆVçBÂuÅTtåôÄ%TÕôÔôäõõ4ÔÄ"rÒÀ ÒÀ Ò° &WGW&ã° Ð  ×F'F7BÒF'F7G2Óå²FæFWÓ° FÆörÓæFV'Vr$Æ'VÒÖ¢G'ær'F7BrF'F7BÓç¶æÖWÒrÖF6¢F'F7BÓç¶ÖF6Ò"°  2'F7B6ööÆF÷vâ(	B6¶VçF&R'F7Bb6¶VBFöò&V6VçFÇ bö4'F7Döä6ööÆF÷vâF6ÆVçDBÂF'F7BÓç¶æÖWÒ° FÆörÓæFV'Vr$Æ'VÒÖ¢rF'F7BÓç¶æÖWÒröâ6ööÆF÷vâÂ6¶ær'F7BfÆÆ&6²"° ÷G'æWD'F7BF6ÆVçBÂF6ÆVçDBÂF'F7G2ÂFæFW²ÂF¶W° &WGW&ã° Ð  övWEF÷Æ'V×2F6ÆVçBÂF6ÆVçDBÂF'F7BÓç¶æÖWÒÂF¶WÂ7V"° ×FÆ'V×2Ò6gC°  ×G7FFRÒGÆW%7FFW²F6ÆVçDGÓ° &WGW&âVæÆW72G7FFRbbG7FFRÓç¶7FfWÓ°  ×6æFFFW3° f÷"×FÆ'VÒFÆ'V×2° ×F¶WÒö7F÷'¶WF'F7BÓç¶æÖWÒÂFÆ'VÒÓç¶æÖWÒ° VæÆW72w&W²EòWF¶WÒ²G7FFRÓç¶7F÷'×Ò° W66æFFFW2Â° 'F7BÓâF'F7BÓç¶æÖWÒÀ Æ'VÒÓâFÆ'VÒÓç¶æÖWÒÀ Ö&BÓâFÆ'VÒÓç¶Ö&GÒÇÂrrÀ Ó° Ð Ð  b6æFFFW2° ×G6²ÒF6æFFFW5³Ó° FÆörÓææfò$Æ'VÒÖ¢6VÆV7FVBrG6²Óç¶Æ'V×Òr'rG6²Óç¶'F7GÒr'F7BfÆÆ&6²"°  G7FFRÓç·6VVD'F7GÒÒG6²Óç¶'F7GÓ° G7FFRÓç·6VVDÆ'V×ÒÒG6²Óç¶Æ'V×Ó°  öFEFô7F÷'F6ÆVçDBÂG6²Óç¶'F7GÒÂG6²Óç¶Æ'V×Ò° öFD'F7EFô7F÷'F6ÆVçDBÂG6²Óç¶'F7GÒ°  öfæDæEÆÆ'VÒF6ÆVçBÂG6²Óç¶'F7GÒÂG6²Óç¶Æ'V×ÒÂvFBrÂ7V"° G7FFRÓç·VæFætÆöö·WÒÒ°  F6ÆVçBÓç6÷t'&VfÇ° ¦fRÓâ° GRÓâvÖVBrÀ 7GÆRÓâvFBrÀ FWBÓâ²7&çFb 77G&ærF6ÆVçBÂuÅTtåôÄ%TÕôÔõTUTTBrÀ "G6²Óç¶Æ'V×Ò(	BG6²Óç¶'F7GÒ  ÒÀ ÒÀ Ò° Ò° ÒVÇ6R° ÷G'æWD'F7BF6ÆVçBÂF6ÆVçDBÂF'F7G2ÂFæFW²ÂF¶W° Ð Ò°§Ð §7V"övWEF÷Æ'V×2° ×F6ÆVçBÂF6ÆVçDBÂF'F7BÂF¶WÂF6ÆÆ&6²Òó°  ×GW&ÂÒÄ5DdÕôô$4RâsöÖWFöCÖ'F7BævWEF÷Æ'V×2p ârf'F7CÒrâW&öW66U÷WFcF'F7B ârfÆÖCÒrâÔõDõôÄ%TÕ0 ârfö¶WÒrâF¶W ârff÷&ÖCÖ§6öâs°  6ÆÓ£¤æWGv÷&¶æs£¥6×ÆT7æ4EEÓææWr 7V"° ×FGGÒ6gC° ×G&W7VÇBÒWfÂ²FV6öFUö§6öâFGGÓæ6öçFVçBÓ°  bDÇÂG&W7VÇB° FÆörÓçv&â$Æ'VÒÖ¢¥4ôâ'6RW'&÷"f÷"F÷Æ'V×3¢D"° F6ÆÆ&6²ÓâµÒ° &WGW&ã° Ð bG&W7VÇBÓç¶W'&÷'Ò° FÆörÓçv&â$Æ'VÒÖ¢Æ7BæfÒW'&÷#¢G&W7VÇBÓç¶ÖW76vWÒ"° F6ÆÆ&6²ÓâµÒ° &WGW&ã° Ð  ×Æ'V×3° ×GF÷Æ'V×2ÒG&W7VÇBÓç·F÷Æ'V×7ÒÓç¶Æ'V×ÒÇÂµÓ° GF÷Æ'V×2Ò²GF÷Æ'V×5Òb&VbGF÷Æ'V×2Wt4s°  f÷"×FGF÷Æ'V×2° æWBVæÆW72FÓç¶æÖWÓ° æWBbFÓç¶æÖWÒ×âõåÇ2¢Bó° æWBbÆ2FÓç¶æÖWÒWrçVÆÂs°  W6Æ'V×2Â° æÖRÓâFÓç¶æÖWÒÀ Ö&BÓâFÓç¶Ö&GÒÇÂrrÀ Æ6÷VçBÓâFÓç·Æ6÷VçGÒÇÂÀ Ó° Ð  FÆörÓæFV'Vr$Æ'VÒÖ¢f÷VæB"â66Æ"Æ'V×2â"F÷Æ'V×2f÷"rF'F7Br"° F6ÆÆ&6²ÓâÄÆ'V×2° ÒÀ 7V"° ×FGGÒ6gC° FÆörÓçv&â$Æ'VÒÖ¢EEW'&÷"fWF6ærF÷Æ'V×3¢"âFGGÓæW'&÷"ÇÂwVæ¶æ÷vâr° F6ÆÆ&6²ÓâµÒ° ÒÀ ²FÖV÷WBÓâRÒÀ ÓævWBGW&Â°§Ð ¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ¢2Æ'VÒ&W6öÇWFöâ(	BfæBâÆ'&'÷"öæÆæR6W'f6W0¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ §7V"öfæDæEÆÆ'VÒ° ×F6ÆVçBÂF'F7BÂFÆ'VÒÂF6ÖBÂF6ÆÆ&6²Òó°  F6ÆÆ&6²ÇÃÒ7V"·Ó°  2&V6÷&BvW&RF2Æ'VÒvÆÂ7F'BâFRÆÆ7Bf÷"6VVBG&6²6VÆV7Föâ ×F6ÆVçDBÒF6ÆVçBÓæÖ7FW"ÓæC° ×G&T6÷VçBÒ6ÆÓ£¥ÆW#£¥ÆÆ7C£¦6÷VçBF6ÆVçB°  ×Gw&VD6ÆÆ&6²Ò7V"° 2gFW"FRÆ'VÒ2FFVBÂ&V6÷&BG27F'BæFW ×G÷7D6÷VçBÒ6ÆÓ£¥ÆW#£¥ÆÆ7C£¦6÷VçBF6ÆVçB° b×G7FFRÒGÆW%7FFW²F6ÆVçDGÒ° bF6ÖBWvÆöBr° G7FFRÓç¶Æ7DÆ'VÕ7F'DæFWÒÒ° ÒVÇ6R° G7FFRÓç¶Æ7DÆ'VÕ7F'DæFWÒÒG&T6÷VçC° Ð FÆörÓæFV'Vr$Æ'VÒÖ¢Æ7BÆ'VÒ7F'G2BÆÆ7BæFWG7FFRÓç¶Æ7DÆ'VÕ7F'DæFWÒÆÆ7Bæ÷rG÷7D6÷VçBG&6·2"° Ð F6ÆÆ&6²Óâ° Ó°  bG&Vg2ÓævWBvF66÷fW%öæWrr° 2F66÷fW'ÖöFS¢&VfW"Æ'V×2äõBâFRÆö6ÂÆ'&' 2G'öæÆæRf'7C²fÆÂ&6²FòÆö6ÂöæÇböæÆæRfÇ0 öfæDöæÆæTÆ'VÒF6ÆVçBÂF'F7BÂFÆ'VÒÂF6ÖBÂGw&VD6ÆÆ&6²Â7V"° 2öæÆæRfÆVB(	BfÆÂ&6²FòÆö6À öfæDÆö6ÄÆ'VÒF6ÆVçBÂF'F7BÂFÆ'VÒÂ7V"° ×FÆö6ÄÆ'VÔBÒ6gC°  bFÆö6ÄÆ'VÔB° FÆörÓææfò$Æ'VÒÖ¢F66÷fW'fÆÆ&6²(	Bf÷VæBrFÆ'VÒrÆö6ÆÇC¢FÆö6ÄÆ'VÔB"° F6ÆVçBÓæWV7WFR²wÆÆ7F6öçG&öÂrÂ&6ÖC¢F6ÖB"Â&Æ'VÕöC¢FÆö6ÄÆ'VÔB%Ò° Gw&VD6ÆÆ&6²Óâ° ÒVÇ6R° FÆörÓçv&â$Æ'VÒÖ¢6÷VÆBæ÷BfæBrFÆ'VÒr'rF'F7BrçvW&R"° Gw&VD6ÆÆ&6²Óâ° Ð Ò° Ò° ÒVÇ6bG&Vg2ÓævWBw&VfW%öÆö6Âr° öfæDÆö6ÄÆ'VÒF6ÆVçBÂF'F7BÂFÆ'VÒÂ7V"° ×FÆö6ÄÆ'VÔBÒ6gC°  bFÆö6ÄÆ'VÔB° FÆörÓææfò$Æ'VÒÖ¢f÷VæBrFÆ'VÒrâÆö6ÂÆ'&'C¢FÆö6ÄÆ'VÔB"° F6ÆVçBÓæWV7WFR²wÆÆ7F6öçG&öÂrÂ&6ÖC¢F6ÖB"Â&Æ'VÕöC¢FÆö6ÄÆ'VÔB%Ò° Gw&VD6ÆÆ&6²Óâ° ÒVÇ6R° öfæDöæÆæTÆ'VÒF6ÆVçBÂF'F7BÂFÆ'VÒÂF6ÖBÂGw&VD6ÆÆ&6²° Ð Ò° ÒVÇ6R° öfæDöæÆæTÆ'VÒF6ÆVçBÂF'F7BÂFÆ'VÒÂF6ÖBÂGw&VD6ÆÆ&6²° Ð§Ð §7V"öfæDÆö6ÄÆ'VÒ° ×F6ÆVçBÂF'F7BÂFÆ'VÒÂF6ÆÆ&6²Òó°  ×FF&Ò6ÆÓ£¥66VÖÓæF&°  2W7BÖF6 ×G7FÒFF&Óç&W&Uö66VB %4TÄT5BÆ'V×2æBe$ôÒÆ'V×2  â$¤ôâ6öçG&'WF÷'2ôâ6öçG&'WF÷'2æBÒÆ'V×2æ6öçG&'WF÷"  â%tU$RÆ'V×2çFFÆRÒòäB6öçG&'WF÷'2ææÖRÒò  â$ÄÔB  ° G7FÓæWV7WFRFÆ'VÒÂF'F7B° ×FÆ'VÔBÒG7FÓæfWF6&÷uö'&° G7FÓæfæ6°  bFÆ'VÔB° F6ÆÆ&6²ÓâFÆ'VÔB° &WGW&ã° Ð  266RÖç6Vç6FfRÖF6 G7FÒFF&Óç&W&Uö66VB %4TÄT5BÆ'V×2æBe$ôÒÆ'V×2  â$¤ôâ6öçG&'WF÷'2ôâ6öçG&'WF÷'2æBÒÆ'V×2æ6öçG&'WF÷"  â%tU$RÄõtU"Æ'V×2çFFÆRÒÄõtU"òäBÄõtU"6öçG&'WF÷'2ææÖRÒÄõtU"ò  â$ÄÔB  ° G7FÓæWV7WFRFÆ'VÒÂF'F7B° FÆ'VÔBÒG7FÓæfWF6&÷uö'&° G7FÓæfæ6°  bFÆ'VÔB° F6ÆÆ&6²ÓâFÆ'VÔB° &WGW&ã° Ð  2Ä´RÖF6f÷"'FÂFFÆW2Rærâ$Æ'VÒ"ÖF6W2$Æ'VÒFVÇWR" G7FÒFF&Óç&W&Uö66VB %4TÄT5BÆ'V×2æBe$ôÒÆ'V×2  â$¤ôâ6öçG&'WF÷'2ôâ6öçG&'WF÷'2æBÒÆ'V×2æ6öçG&'WF÷"  â%tU$RÄõtU"Æ'V×2çFFÆRÄ´RòäBÄõtU"6öçG&'WF÷'2ææÖRÄ´Rò  â$ÄÔB  ° G7FÓæWV7WFRrRrâÆ2FÆ'VÒârRrÂrRrâÆ2F'F7BârRr° FÆ'VÔBÒG7FÓæfWF6&÷uö'&° G7FÓæfæ6°  F6ÆÆ&6²ÓâFÆ'VÔB°§Ð §7V"öfæDöæÆæTÆ'VÒ° ×F6ÆVçBÂF'F7BÂFÆ'VÒÂF6ÖBÂF6ÆÆ&6²ÂFW'&÷$6ÆÆ&6²Òó°  F6ÆÆ&6²ÇÃÒ7V"·Ó°  FÆörÓææfò$Æ'VÒÖ¢6V&6æröæÆæR6W'f6W2f÷"rFÆ'VÒr'rF'F7Br"°  ×6W'f6W2ÒövWDfÆ&ÆU6W'f6W2°  b6W'f6W2° ÷G'öæÆæU6W'f6RF6ÆVçBÂF'F7BÂFÆ'VÒÂF6ÖBÂÄ6W'f6W2ÂÂF6ÆÆ&6²ÂFW'&÷$6ÆÆ&6²° ÒVÇ6R° bFW'&÷$6ÆÆ&6²° 2F66÷fW'ÖöFS¢ÆWB6ÆÆW"æFÆRFRfÆÆ&6° FW'&÷$6ÆÆ&6²Óâ° ÒVÇ6R° 2æòöæÆæR6W'f6W2(	BG'Æö6Â2Æ7B&W6÷'@ öfæDÆö6ÄÆ'VÒF6ÆVçBÂF'F7BÂFÆ'VÒÂ7V"° ×FÆ'VÔBÒ6gC° bFÆ'VÔB° F6ÆVçBÓæWV7WFR²wÆÆ7F6öçG&öÂrÂ&6ÖC¢F6ÖB"Â&Æ'VÕöC¢FÆ'VÔB%Ò° ÒVÇ6R° FÆörÓçv&â$Æ'VÒÖ¢6÷VÆBæ÷BfæBrFÆ'VÒr'rF'F7BrçvW&R"° Ð F6ÆÆ&6²Óâ° Ò° Ð Ð§Ð §7V"övWDfÆ&ÆU6W'f6W2° ×6W'f6W3°  W66W'f6W2Âw7÷GGp b6ÆÓ£¥WFÇ3£¥ÇVväÖævW"Óæ4Væ&ÆVBuÇVvç3£¥7÷GG£¥ÇVvâr°  W66W'f6W2ÂwFFÂp b6ÆÓ£¥WFÇ3£¥ÇVväÖævW"Óæ4Væ&ÆVBuÇVvç3£¥DDÃ£¥ÇVvâr°  W66W'f6W2Âwö'W¢p b6ÆÓ£¥WFÇ3£¥ÇVväÖævW"Óæ4Væ&ÆVBuÇVvç3£¥ö'W££¥ÇVvâr°  W66W'f6W2ÂvFVW¦W"p b6ÆÓ£¥WFÇ3£¥ÇVväÖævW"Óæ4Væ&ÆVBuÇVvç3£¤FVW¦W#£¥ÇVvâr°  &WGW&â6W'f6W3°§Ð §7V"÷G'öæÆæU6W'f6R° ×F6ÆVçBÂF'F7BÂFÆ'VÒÂF6ÖBÂG6W'f6W2ÂFæFWÂF6ÆÆ&6²ÂFW'&÷$6ÆÆ&6²Òó°  F6ÆÆ&6²ÇÃÒ7V"·Ó°  bFæFWãÒ66Æ"G6W'f6W2° FÆörÓææfò$Æ'VÒÖ¢æòöæÆæR6W'f6RBrFÆ'VÒr'rF'F7Br"° bFW'&÷$6ÆÆ&6²° FW'&÷$6ÆÆ&6²Óâ° ÒVÇ6R° F6ÆÆ&6²Óâ° Ð &WGW&ã° Ð  ×G6W'f6RÒG6W'f6W2Óå²FæFWÓ° FÆörÓæFV'Vr$Æ'VÒÖ¢G'ærG6W'f6R"°  ×FæFÆW"Ò° 7÷GGÓâÂe÷6V&67÷GGÀ FFÂÓâÂe÷6V&6FFÂÀ ÒÓç²G6W'f6WÓ°  bFæFÆW"° FæFÆW"ÓâF6ÆVçBÂF'F7BÂFÆ'VÒÂF6ÖBÂ7V"° ×Ff÷VæBÒ6gC° bFf÷VæB° F6ÆÆ&6²Óâ° ÒVÇ6R° ÷G'öæÆæU6W'f6RF6ÆVçBÂF'F7BÂFÆ'VÒÂF6ÖBÂG6W'f6W2ÂFæFW²ÂF6ÆÆ&6²ÂFW'&÷$6ÆÆ&6²° Ð Ò° ÒVÇ6R° ÷G'öæÆæU6W'f6RF6ÆVçBÂF'F7BÂFÆ'VÒÂF6ÖBÂG6W'f6W2ÂFæFW²ÂF6ÆÆ&6²ÂFW'&÷$6ÆÆ&6²° Ð§Ð §7V"÷6V&67÷GG° ×F6ÆVçBÂF'F7BÂFÆ'VÒÂF6ÖBÂF6ÆÆ&6²Òó°  WfÂ° bÇVvç3£¥7÷GG£¥ÇVvâÓæ6âvvWDæFÆW"r° ×FÒÇVvç3£¥7÷GG£¥ÇVvâÓævWDæFÆW"F6ÆVçB° bFbbFÓæ6âw6V&6r° FÓç6V&67V"° ×G&W7VÇG2Ò6gC°  b&VbG&W7VÇG2Wt4rbbG&W7VÇG2Óç¶Æ'V×7Òbb&VbG&W7VÇG2Óç¶Æ'V×7ÒWt4rbbG&W7VÇG2Óç¶Æ'V×7ÒÓç¶FV×7Ò° f÷"×FFVÒ²G&W7VÇG2Óç¶Æ'V×7ÒÓç¶FV×7×Ò° bFFVÒÓç·W&Ò° FÆörÓææfò$Æ'VÒÖ¢f÷VæBöâ7÷Fg¢FFVÒÓç¶æÖWÒ"° F6ÆVçBÓæWV7WFR° wÆÆ7BrÀ F6ÖBWvÆöBròwÆr¢vFBrÀ FFVÒÓç·W&ÒÀ Ò° F6ÆÆ&6²Óâ° &WGW&ã° Ð Ð Ð  F6ÆÆ&6²Óâ° ÒÂ° 6V&6Óâ&Æ'VÓ¢FÆ'VÒ'F7C¢F'F7B"À GRÓâvÆ'V×2rÀ ÆÖBÓâRÀ Ò° &WGW&ã° Ð Ð F6ÆÆ&6²Óâ° Ó°  bD° FÆörÓæFV'Vr$Æ'VÒÖ¢7÷GG6V&6W'&÷#¢D"° F6ÆÆ&6²Óâ° Ð§Ð §7V"÷6V&6FFÂ° ×F6ÆVçBÂF'F7BÂFÆ'VÒÂF6ÖBÂF6ÆÆ&6²Òó°  WfÂ° bÇVvç3£¥DDÃ£¥ÇVvâÓæ6âvvWDæFÆW"r° ×FÒÇVvç3£¥DDÃ£¥ÇVvâÓævWDæFÆW"F6ÆVçB° bFbbFÓæ6âw6V&6r° FÓç6V&67V"° ×G&W7VÇG2Ò6gC°  ×FV×3° b&VbG&W7VÇG2Wt4rbbG&W7VÇG2Óç¶Æ'V×7Ò° FV×2Ò&VbG&W7VÇG2Óç¶Æ'V×7ÒWt%$p ò²G&W7VÇG2Óç¶Æ'V×7×Ð ¢&VbG&W7VÇG2Óç¶Æ'V×7ÒWt4rbbG&W7VÇG2Óç¶Æ'V×7ÒÓç¶FV×7Ð ò²G&W7VÇG2Óç¶Æ'V×7ÒÓç¶FV×7×Ò¢° Ð  f÷"×FFVÒFV×2° b×FBÒFFVÒÓç¶GÒ° FÆörÓææfò$Æ'VÒÖ¢f÷VæBöâDDÃ¢"âFFVÒÓç·FFÆWÒÇÂFB° F6ÆVçBÓæWV7WFR° wÆÆ7BrÀ F6ÖBWvÆöBròwÆr¢vFBrÀ 'FFÃ¢òòFBæfÆ2"À Ò° F6ÆÆ&6²Óâ° &WGW&ã° Ð Ð  F6ÆÆ&6²Óâ° ÒÂ° 6V&6Óâ"F'F7BFÆ'VÒ"À GRÓâvÆ'V×2rÀ ÆÖBÓâRÀ Ò° &WGW&ã° Ð Ð F6ÆÆ&6²Óâ° Ó°  bD° FÆörÓæFV'Vr$Æ'VÒÖ¢DDÂ6V&6W'&÷#¢D"° F6ÆÆ&6²Óâ° Ð§Ð ¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ¢27F÷'ÖævVÖVç@¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ §7V"ö7F÷'¶W° ×F'F7BÂFÆ'VÒÒó° &WGW&âÆ2"F'F7GÇÇÂFÆ'VÒ"°§Ð §7V"öFEFô7F÷'° ×F6ÆVçDBÂF'F7BÂFÆ'VÒÒó°  ×G7FFRÒGÆW%7FFW²F6ÆVçDGÒÇÂ&WGW&ã° ×F¶WÒö7F÷'¶WF'F7BÂFÆ'VÒ° ×FÖ7F÷'ÒG&Vg2ÓævWBvÖö7F÷'rÇÂDTdTÅEôÔô5Dõ%°  W6²G7FFRÓç¶7F÷'×ÒÂF¶W°  vÆR66Æ"²G7FFRÓç¶7F÷'×ÒâFÖ7F÷'° 6gB²G7FFRÓç¶7F÷'×Ó° Ð§Ð ¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ¢2'F7B6ööÆF÷vâÖævVÖVç@¢2ÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÐ §7V"öFD'F7EFô7F÷'° ×F6ÆVçDBÂF'F7BÒó°  ×G7FFRÒGÆW%7FFW²F6ÆVçDGÒÇÂ&WGW&ã° ×F6ööÆF÷vâÒG&Vg2ÓævWBv'F7Eö6ööÆF÷vârÇÂDTdTÅEô%D5Eô4ôôÄDõtã°  W6²G7FFRÓç¶'F7Eö7F÷'×ÒÂÆ2F'F7B°  2¶VWÆ7BG&ÖÖVBFò6ööÆF÷vâ6¦RvRöæÇæVVBFRÆ7Bâ vÆR66Æ"²G7FFRÓç¶'F7Eö7F÷'×ÒâF6ööÆF÷vâ° 6gB²G7FFRÓç¶'F7Eö7F÷'×Ó° Ð§Ð §7V"ö4'F7Döä6ööÆF÷vâ° ×F6ÆVçDBÂF'F7BÒó°  ×G7FFRÒGÆW%7FFW²F6ÆVçDGÒÇÂ&WGW&â° ×F6ööÆF÷vâÒG&Vg2ÓævWBv'F7Eö6ööÆF÷vârÇÂ°  &WGW&âVæÆW72F6ööÆF÷vââ°  ×FÆ4'F7BÒÆ2F'F7B° &WGW&âw&W²EòWFÆ4'F7BÒ²G7FFRÓç¶'F7Eö7F÷'×Ó°§Ð £°
