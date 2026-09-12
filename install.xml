@@ -1,16 +1,18 @@
-<?xml version="1.0.1"?>
-<extension>
+<?xml version="1.0"?>
+<Extension>
+  <id>eu.albummix</id>
+  <version>1.0.2</version>
+  <category>playlist</category>
   <name>PLUGIN_ALBUM_MIX</name>
-  <module>Plugins::AlbumMix::Plugin</module>
-  <category>playlists</category>
-  <version>1.0.1</version>
   <description>PLUGIN_ALBUM_MIX_DESC</description>
-  <creator>Matt Koopmans</creator>
-  <email>mattkoop@aurelian-group.com</email>
-  <defaultState>enabled</defaultState>
+  <module>Plugins::AlbumMix::Plugin</module>
+  <icon>plugins/AlbumMix/html/images/icon.png</icon>
   <targetApplication>
-    <id>SqueezeCenter</id>
+    <id>squeezecenter</id>
     <minVersion>8.0</minVersion>
-    <maxVersion>*</maxVersion>
   </targetApplication>
-</extension>
+  <settings>
+    <name>PLUGIN_ALBUM_MIX</name>
+    <page>Plugins::AlbumMix::Settings</page>
+  </settings>
+</Extension>
