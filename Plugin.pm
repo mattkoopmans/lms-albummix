@@ -962,7 +962,7 @@ sub _searchSpotty {
 				$api->search(sub {
 					my $results = shift;
 
-					if ( $results && $results->{albums} && $results->{albums}->{items} ) {
+					if ( ref $results eq 'HASH' && $results->{albums} && ref $results->{albums} eq 'HASH' && $results->{albums}->{items} ) {
 						for my $item ( @{$results->{albums}->{items}} ) {
 							if ( $item->{uri} ) {
 								$log->info("Album Mix: Found on Spotify: $item->{name}");
@@ -1006,10 +1006,10 @@ sub _searchTidal {
 					my $results = shift;
 
 					my @items;
-					if ( $results && $results->{albums} ) {
+					if ( ref $results eq 'HASH' && $results->{albums} ) {
 						@items = ref $results->{albums} eq 'ARRAY'
 							? @{$results->{albums}}
-							: ($results->{albums}->{items}
+							: (ref $results->{albums} eq 'HASH' && $results->{albums}->{items}
 								? @{$results->{albums}->{items}} : ());
 					}
 

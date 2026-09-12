@@ -3,19 +3,19 @@
 	<div class="prefDesc">[% "PLUGIN_ALBUM_MIX_DESC" | string %]</div>
 
 	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_LASTFM_API_KEY" desc="PLUGIN_ALBUM_MIX_LASTFM_API_KEY_DESC" %]
-		<input type="text" class="stdedit" name="lastfm_api_key" value="[% prefs.lastfm_api_key %]" size="40" />
+		<input type="text" class="stdedit" name="pref_lastfm_api_key" value="[% prefs.lastfm_api_key %]" size="40" />
 	[% END %]
 
 	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_PREFER_LOCAL" desc="PLUGIN_ALBUM_MIX_PREFER_LOCAL_DESC" %]
-		<input type="checkbox" name="prefer_local" value="1" [% IF prefs.prefer_local %]checked[% END %] />
+		<input type="checkbox" name="pref_prefer_local" value="1" [% IF prefs.prefer_local %]checked[% END %] />
 	[% END %]
 
 	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_MAX_HISTORY" desc="PLUGIN_ALBUM_MIX_MAX_HISTORY_DESC" %]
-		<input type="text" class="stdedit" name="max_history" value="[% prefs.max_history %]" size="5" />
+		<input type="text" class="stdedit" name="pref_max_history" value="[% prefs.max_history %]" size="5" />
 	[% END %]
 
 	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_LOOKAHEAD" desc="PLUGIN_ALBUM_MIX_LOOKAHEAD_DESC" %]
-		<input type="text" class="stdedit" name="lookahead" value="[% prefs.lookahead %]" size="5" />
+		<input type="text" class="stdedit" name="pref_lookahead" value="[% prefs.lookahead %]" size="5" />
 	[% END %]
 
 [% PROCESS settings/footer.html %]
