@@ -40,6 +40,18 @@ PLUGIN_ALBUM_MIX_PREFER_LOCAL
 PLUGIN_ALBUM_MIX_PREFER_LOCAL_DESC
 	EN	When enabled, the plugin will search your local library first before trying online music services.
 
+PLUGIN_ALBUM_MIX_DISCOVER_NEW
+	EN	Discovery Mode
+
+PLUGIN_ALBUM_MIX_DISCOVER_NEW_DESC
+	EN	When enabled, prefer albums from online services over the local library. Great for discovering new music you don't already own.
+
+PLUGIN_ALBUM_MIX_ARTIST_COOLDOWN
+	EN	Artist Cooldown (albums)
+
+PLUGIN_ALBUM_MIX_ARTIST_COOLDOWN_DESC
+	EN	Number of albums that must be queued before the same artist can appear again. Set to 0 to disable. Default is 5.
+
 PLUGIN_ALBUM_MIX_LOOKAHEAD
 	EN	Queue Lookahead (tracks)
 
