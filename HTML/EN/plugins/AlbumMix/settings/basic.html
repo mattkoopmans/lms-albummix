@@ -10,6 +10,14 @@
 		<input type="checkbox" name="pref_prefer_local" value="1" [% IF prefs.prefer_local %]checked[% END %] />
 	[% END %]
 
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_DISCOVER_NEW" desc="PLUGIN_ALBUM_MIX_DISCOVER_NEW_DESC" %]
+		<input type="checkbox" name="pref_discover_new" value="1" [% IF prefs.discover_new %]checked[% END %] />
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_ARTIST_COOLDOWN" desc="PLUGIN_ALBUM_MIX_ARTIST_COOLDOWN_DESC" %]
+		<input type="text" class="stdedit" name="pref_artist_cooldown" value="[% prefs.artist_cooldown %]" size="5" />
+	[% END %]
+
 	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_MAX_HISTORY" desc="PLUGIN_ALBUM_MIX_MAX_HISTORY_DESC" %]
 		<input type="text" class="stdedit" name="pref_max_history" value="[% prefs.max_history %]" size="5" />
 	[% END %]
