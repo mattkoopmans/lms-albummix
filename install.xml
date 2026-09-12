@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0.1"?>
 <extension>
   <name>PLUGIN_ALBUM_MIX</name>
   <module>Plugins::AlbumMix::Plugin</module>
