@@ -1,9 +1,9 @@
-<?xml version="1.0"?>
+<?xml version="1.0.1"?>
 <extension>
   <name>PLUGIN_ALBUM_MIX</name>
   <module>Plugins::AlbumMix::Plugin</module>
   <category>playlists</category>
-  <version>1.0.0</version>
+  <version>1.0.1</version>
   <description>PLUGIN_ALBUM_MIX_DESC</description>
   <creator>Matt Koopmans</creator>
   <email>mattkoop@aurelian-group.com</email>
