@@ -1,0 +1,56 @@
+PLUGIN_ALBUM_MIX
+	EN	Album Mix
+
+PLUGIN_ALBUM_MIX_DESC
+	EN	Creates a continuous album-based mix from a seed album using Last.fm similarity.
+
+PLUGIN_ALBUM_MIX_CREATE
+	EN	Create Album Mix
+
+PLUGIN_ALBUM_MIX_CREATING
+	EN	Creating Album Mix...
+
+PLUGIN_ALBUM_MIX_STARTED
+	EN	Album Mix started
+
+PLUGIN_ALBUM_MIX_QUEUED
+	EN	Queued similar album: %s
+
+PLUGIN_ALBUM_MIX_NO_SIMILAR
+	EN	No similar albums found
+
+PLUGIN_ALBUM_MIX_SETTINGS
+	EN	Album Mix Settings
+
+PLUGIN_ALBUM_MIX_LASTFM_API_KEY
+	EN	Last.fm API Key
+
+PLUGIN_ALBUM_MIX_LASTFM_API_KEY_DESC
+	EN	Enter your Last.fm API key. Get one free at https://www.last.fm/api/account/create
+
+PLUGIN_ALBUM_MIX_MAX_HISTORY
+	EN	Album History Size
+
+PLUGIN_ALBUM_MIX_MAX_HISTORY_DESC
+	EN	Maximum number of albums to remember per session to avoid repeats.
+
+PLUGIN_ALBUM_MIX_PREFER_LOCAL
+	EN	Prefer Local Library
+
+PLUGIN_ALBUM_MIX_PREFER_LOCAL_DESC
+	EN	When enabled, the plugin will search your local library first before trying online music services.
+
+PLUGIN_ALBUM_MIX_LOOKAHEAD
+	EN	Queue Lookahead (tracks)
+
+PLUGIN_ALBUM_MIX_LOOKAHEAD_DESC
+	EN	Number of tracks before the end of the current album to queue the next one.
+
+PLUGIN_ALBUM_MIX_STOP
+	EN	Stop Album Mix
+
+PLUGIN_ALBUM_MIX_STOPPED
+	EN	Album Mix stopped
+
+PLUGIN_ALBUM_MIX_SEED_TRACK
+	EN	Seed track: %s by %s
