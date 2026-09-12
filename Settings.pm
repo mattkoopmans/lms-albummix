@@ -18,7 +18,7 @@ sub page {
 }
 
 sub prefs {
-	return ($prefs, qw(lastfm_api_key max_history prefer_local lookahead));
+	return ($prefs, qw(lastfm_api_key max_history prefer_local discover_new lookahead artist_cooldown));
 }
 
 1;
