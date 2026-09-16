@@ -9,7 +9,7 @@
       <desc lang="EN">Creates continuous, discovery-driven playlists from any seed album using Last.fm track similarity. Supports local library and online services (Spotify, TIDAL, Qobuz, Deezer).</desc>
       <category>playlists</category>
       <url>https://github.com/mattkoopmans/lms-albummix/releases/download/v1.1.1/AlbumMix-1.1.1.zip</url>
-      <sha>sha256:f308684646130eeb54905c9407321f0aa923f3a7b612beef4e7cd8377fe03c86</sha>
+      <sha>5bf8269b05cc5980df4367e4ea7c30d9453a91b7</sha>
       <creator>Matt Koopmans</creator>
       <email>matt.koopmans@gmail.com</email>
       <link>https://github.com/mattkoopmans/lms-albummix</link>
