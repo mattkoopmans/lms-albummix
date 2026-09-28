@@ -11,7 +11,7 @@ use Slim::Utils::Prefs;
 use Slim::Utils::Strings qw(string cstring);
 use Slim::Networking::SimpleAsyncHTTP;
 
-use JSON::XS::VersionOneAndTwo;
+use JSON::XS qw(decode_json);
 use URI::Escape qw(uri_escape_utf8);
 
 use constant LASTFM_API_BASE      => 'https://ws.audioscrobbler.com/2.0/';
@@ -948,17 +948,18 @@ sub _findOnlineAlbum {
 sub _getAvailableServices {
 	my @services;
 
-	push @services, 'spotty'
-		if Slim::Utils::PluginManager->isEnabled('Plugins::Spotty::Plugin');
-
+	# Only include services that have a search handler implemented
 	push @services, 'tidal'
 		if Slim::Utils::PluginManager->isEnabled('Plugins::TIDAL::Plugin');
 
-	push @services, 'qobuz'
-		if Slim::Utils::PluginManager->isEnabled('Plugins::Qobuz::Plugin');
+	push @services, 'spotty'
+		if Slim::Utils::PluginManager->isEnabled('Plugins::Spotty::Plugin');
 
-	push @services, 'deezer'
-		if Slim::Utils::PluginManager->isEnabled('Plugins::Deezer::Plugin');
+	# Qobuz and Deezer: detected but no search handler yet
+	# push @services, 'qobuz'
+	#	if Slim::Utils::PluginManager->isEnabled('Plugins::Qobuz::Plugin');
+	# push @services, 'deezer'
+	#	if Slim::Utils::PluginManager->isEnabled('Plugins::Deezer::Plugin');
 
 	return @services;
 }
@@ -1050,30 +1051,55 @@ sub _searchTidal {
 		if ( Plugins::TIDAL::Plugin->can('getAPIHandler') ) {
 			my $api = Plugins::TIDAL::Plugin->getAPIHandler($client);
 			if ( $api && $api->can('search') ) {
+				$log->info("Album Mix: Searching TIDAL for '$album' by '$artist'");
 				$api->search(sub {
 					my $results = shift;
 
+					# The TIDAL API returns the items array directly when
+					# a type is specified (e.g. type => 'albums')
 					my @items;
-					if ( ref $results eq 'HASH' && $results->{albums} ) {
-						@items = ref $results->{albums} eq 'ARRAY'
-							? @{$results->{albums}}
-							: (ref $results->{albums} eq 'HASH' && $results->{albums}->{items}
-								? @{$results->{albums}->{items}} : ());
+					if ( ref $results eq 'ARRAY' ) {
+						@items = @$results;
+					} elsif ( ref $results eq 'HASH' ) {
+						# Fallback for alternative response formats
+						if ( $results->{items} ) {
+							@items = @{$results->{items}};
+						} elsif ( $results->{albums} ) {
+							my $albums = $results->{albums};
+							@items = ref $albums eq 'ARRAY'
+								? @$albums
+								: (ref $albums eq 'HASH' && $albums->{items}
+									? @{$albums->{items}} : ());
+						}
 					}
 
+					$log->info("Album Mix: TIDAL returned " . scalar(@items) . " album results");
+
+					my $lcArtist = lc($artist);
 					for my $item ( @items ) {
 						if ( my $id = $item->{id} ) {
-							$log->info("Album Mix: Found on TIDAL: " . ($item->{title} || $id));
+							# Validate artist match to avoid picking the wrong album
+							my $itemArtist = $item->{artist} || ($item->{artists} && $item->{artists}->[0]) || {};
+							my $itemArtistName = $itemArtist->{name} || '';
+							my $itemTitle = $item->{title} || '';
+
+							if ( $itemArtistName && lc($itemArtistName) ne $lcArtist ) {
+								$log->debug("Album Mix: TIDAL result '$itemTitle' by '$itemArtistName' — artist mismatch, skipping");
+								next;
+							}
+
+							$log->info("Album Mix: Found on TIDAL: $itemTitle by $itemArtistName (id: $id)");
 							$client->execute([
 								'playlist',
 								$cmd eq 'load' ? 'play' : 'add',
-								"tidal://$id.flac",
+								"tidal://album:$id",
 							]);
 							$callback->(1);
 							return;
 						}
 					}
 
+					$log->info("Album Mix: No matching album found on TIDAL");
 					$callback->(0);
 				}, {
 					search => "$artist $album",
@@ -1081,13 +1107,17 @@ sub _searchTidal {
 					limit  => 5,
 				});
 				return;
+			} else {
+				$log->warn("Album Mix: TIDAL API handler has no search method");
 			}
+		} else {
+			$log->warn("Album Mix: TIDAL plugin has no getAPIHandler method");
 		}
 		$callback->(0);
 	};
 
 	if ( $@ ) {
-		$log->debug("Album Mix: TIDAL search error: $@");
+		$log->warn("Album Mix: TIDAL search error: $@");
 		$callback->(0);
 	}
 }
