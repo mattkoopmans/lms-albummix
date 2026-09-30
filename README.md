@@ -73,7 +73,6 @@ Right-click any album while a mix is active and select **Stop Album Mix**, or si
 
 ## Licence
 
-<<<<<<< HEAD
 =======
 GPL 3.0
 >>>>>>> 83e9036551dfb86ea71fefa18617a74f4941e36c
