@@ -1,0 +1,118 @@
+# Builds the AlbumMix plugin zip, attaches it to the GitHub release,
+# checks the download works, and only then updates repo.xml on main.
+#
+# Normal use:   bump <version> in install.xml, commit, push, then
+#               git tag v1.2.0 && git push origin v1.2.0
+# Rebuild/fix:  Actions tab > Release > Run workflow > enter an existing tag
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and publish (e.g. v1.1.2)'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Check out the tagged code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Check tag matches install.xml version
+        run: |
+          VERSION="${TAG#v}"
+          INSTALL_VERSION=$(sed -n 's:.*<version>\(.*\)</version>.*:\1:p' install.xml | head -1)
+          echo "Tag: $TAG  install.xml: $INSTALL_VERSION"
+          if [ "$VERSION" != "$INSTALL_VERSION" ]; then
+            echo "::error::Tag $TAG does not match install.xml version $INSTALL_VERSION. Bump install.xml before tagging."
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "ZIP=AlbumMix-$VERSION.zip" >> "$GITHUB_ENV"
+
+      - name: Build plugin zip (AlbumMix/ folder at the top)
+        run: |
+          mkdir -p build/AlbumMix
+          cp Plugin.pm Settings.pm install.xml strings.txt LICENSE build/AlbumMix/
+          cp -r HTML build/AlbumMix/
+          (cd build && zip -rX "../$ZIP" AlbumMix)
+          unzip -l "$ZIP"
+          unzip -l "$ZIP" | grep -q ' AlbumMix/install.xml$' || { echo "::error::Zip layout is wrong"; exit 1; }
+          SHA=$(sha1sum "$ZIP" | cut -d' ' -f1)
+          echo "SHA=$SHA" >> "$GITHUB_ENV"
+          echo "SHA1: $SHA"
+
+      - name: Attach zip to the GitHub release
+        run: |
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --repo "$REPO" --clobber
+          else
+            gh release create "$TAG" "$ZIP" --repo "$REPO" --title "$TAG" --generate-notes --latest
+          fi
+
+      - name: Check the download URL works and the SHA matches
+        run: |
+          URL="https://github.com/$REPO/releases/download/$TAG/$ZIP"
+          echo "URL=$URL" >> "$GITHUB_ENV"
+          for i in 1 2 3 4 5 6; do
+            curl -fsSL -o check.zip "$URL" && break
+            echo "Not available yet, retrying in 10s..."
+            sleep 10
+          done
+          GOT=$(sha1sum check.zip | cut -d' ' -f1)
+          if [ "$GOT" != "$SHA" ]; then
+            echo "::error::Downloaded zip SHA $GOT does not match built SHA $SHA"
+            exit 1
+          fi
+          echo "Download OK, SHA matches."
+
+      - name: Update repo.xml on main (only after the zip is live)
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+
+          CURRENT=$(sed -n 's:.*<plugin name="AlbumMix" version="\([^"]*\)".*:\1:p' repo.xml | head -1)
+          NEWEST=$(printf '%s\n%s\n' "$CURRENT" "$VERSION" | sort -V | tail -1)
+          if [ "$CURRENT" != "$VERSION" ] && [ "$NEWEST" = "$CURRENT" ]; then
+            echo "repo.xml already advertises newer version $CURRENT; not downgrading to $VERSION."
+            exit 0
+          fi
+
+          sed -i -E \
+            -e "s|(<plugin name=\"AlbumMix\" version=\")[^\"]*|\1$VERSION|" \
+            -e "s|<url>[^<]*</url>|<url>$URL</url>|" \
+            -e "s|<sha>[^<]*</sha>|<sha>$SHA</sha>|" \
+            repo.xml
+          git diff repo.xml
+
+          if git diff --quiet repo.xml; then
+            echo "repo.xml already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add repo.xml
+          git commit -m "repo.xml: publish $TAG (sha1 $SHA)"
+          git push origin main
