@@ -21,6 +21,8 @@ use constant DEFAULT_ARTIST_COOLDOWN  => 5;    # skip artist for N album picks a
 use constant MAX_SIMILAR_TRACKS       => 50;   # candidates from track.getSimilar
 use constant MAX_SIMILAR_ARTISTS      => 20;   # fallback: artist.getSimilar
 use constant MAX_TOP_ALBUMS           => 10;   # fallback: artist.getTopAlbums
+use constant START_GUARD_SECS         => 60;   # max time to ignore "queue replaced" events while the seed album loads
+use constant LOOKUP_TIMEOUT_SECS      => 120;  # a lookup still pending after this long is treated as stuck
 
 my $log = Slim::Utils::Log->addLogCategory({
 	'category'     => 'plugin.albummix',
@@ -67,6 +69,13 @@ sub initPlugin {
 		[['playlist'], ['newsong']],
 	);
 
+	# Subscribe to events that clear or replace the queue, so an active
+	# mix stops when the user moves on to something else
+	Slim::Control::Request::subscribe(
+		\&onPlaylistReplaced,
+		[['playlist'], ['clear', 'load', 'play', 'loadtracks', 'playtracks', 'loadalbum', 'playalbum']],
+	);
+
 	# Register CLI commands
 	Slim::Control::Request::addDispatch(
 		['albummix', 'start'],
@@ -84,6 +93,7 @@ sub initPlugin {
 
 sub shutdownPlugin {
 	Slim::Control::Request::unsubscribe(\&onPlaylistChange);
+	Slim::Control::Request::unsubscribe(\&onPlaylistReplaced);
 	%playerState = ();
 }
 
@@ -222,15 +232,24 @@ sub startAlbumMix {
 
 	$log->info("Starting Album Mix: '$albumName' by '$artistName'");
 
-	# Initialise player state
+	# Initialise player state. Starting a new mix replaces any previous
+	# session for this player; callbacks still in flight from the old
+	# session detect this via _isCurrent() and stop.
 	$playerState{$clientId} = {
 		active              => 1,
 		history             => [],
 		artist_history      => [],   # recent artists for cooldown enforcement
+		skipped             => {},   # albums that failed to queue (not found / already owned) this session
 		seedArtist          => $artistName,
 		seedAlbum           => $albumName,
 		lastAlbumStartIndex => 0,    # playlist index where the last queued album begins
 		pendingLookup       => 0,
+		pendingSince        => 0,
+		startedAt           => time(),
+		# Loading the seed album itself fires "queue replaced" events;
+		# ignore them until the seed starts playing (or this time passes)
+		guardUntil          => time() + START_GUARD_SECS,
+		seenFirstSong       => 0,
 	};
 
 	# Record seed in history
@@ -241,7 +260,13 @@ sub startAlbumMix {
 	if ( $albumId ) {
 		$client->execute(['playlistcontrol', 'cmd:load', "album_id:$albumId"]);
 	} else {
-		_findAndPlayAlbum($client, $artistName, $albumName, 'load');
+		my $state = $playerState{$clientId};
+		_findAndPlayAlbum($client, $artistName, $albumName, 'load', sub {
+			my $found = shift;
+			return if $found || !_isCurrent($clientId, $state);
+			$log->warn("Album Mix: Could not load the seed album '$albumName' by '$artistName'");
+			stopAlbumMix($client);
+		});
 	}
 
 	$client->showBriefly({
@@ -272,6 +297,16 @@ sub stopAlbumMix {
 	}
 }
 
+# True if $state is still this player's active mix session. Async
+# callbacks check this so that answers arriving after the mix was stopped,
+# or after a new mix was started, are ignored.
+sub _isCurrent {
+	my ( $clientId, $state ) = @_;
+
+	my $current = $playerState{$clientId};
+	return $current && $state && $current == $state && $current->{active};
+}
+
 # ============================================================
 # Playlist event handler
 # ============================================================
@@ -283,8 +318,26 @@ sub onPlaylistChange {
 	$client = $client->master;
 	my $clientId = $client->id;
 
-	return unless $playerState{$clientId} && $playerState{$clientId}->{active};
-	return if $playerState{$clientId}->{pendingLookup};
+	my $state = $playerState{$clientId};
+	return unless $state && $state->{active};
+
+	# The first song of the mix has started: the seed album has finished
+	# loading, so end the start-up guard shortly after
+	unless ( $state->{seenFirstSong} ) {
+		$state->{seenFirstSong} = 1;
+		my $until = time() + 2;
+		$until = $state->{startedAt} + 5 if $state->{startedAt} + 5 > $until;
+		$state->{guardUntil} = $until if $until < $state->{guardUntil};
+	}
+
+	if ( $state->{pendingLookup} ) {
+		# A lookup is already running. If it has been pending for too long
+		# (e.g. an online service never answered), assume it is stuck and
+		# allow a new one rather than letting the mix stall for good.
+		return if time() - ($state->{pendingSince} || 0) < LOOKUP_TIMEOUT_SECS;
+		$log->warn("Album Mix: Previous lookup timed out, starting a new one");
+		$state->{pendingLookup} = 0;
+	}
 
 	my $songIndex   = Slim::Player::Source::streamingSongIndex($client);
 	my $playlistLen = Slim::Player::Playlist::count($client);
@@ -299,14 +352,42 @@ sub onPlaylistChange {
 	}
 }
 
+# The queue was cleared or replaced (e.g. the user started playing another
+# album). Stop the mix so it doesn't keep appending albums to music the
+# user chose. Events caused by loading the mix's own seed album are
+# ignored while the start-up guard is active.
+sub onPlaylistReplaced {
+	my $request = shift;
+	my $client  = $request->client || return;
+
+	$client = $client->master;
+	my $state = $playerState{$client->id};
+	return unless $state && $state->{active};
+
+	if ( time() < $state->{guardUntil} ) {
+		$log->debug("Album Mix: Ignoring '" . $request->getRequestString . "' while the seed album loads");
+		return;
+	}
+
+	$log->info("Album Mix: Queue was cleared or replaced, stopping the mix");
+	stopAlbumMix($client);
+}
+
 # ============================================================
 # Similar album discovery via Last.fm
 #
-# Primary:  track.getSimilar on the second-to-last song of the
-#           current album — finds a sonically similar track,
-#           then resolves that track's album.
+# Primary:  track.getSimilar on a random track (second to
+#           second-to-last) of the last queued album — finds
+#           sonically similar tracks, then resolves each one's
+#           album until one can actually be queued.
 # Fallback: artist.getSimilar → artist.getTopAlbums when track
-#           similarity returns nothing useful.
+#           similarity returns nothing that can be queued.
+#
+# A candidate album is skipped when it was already played this
+# session, its artist is on cooldown, it was already tried and
+# couldn't be found, or (Discovery Mode) it is in the local
+# library. Albums are only added to the history once they have
+# actually been queued.
 # ============================================================
 
 sub _findNextAlbum {
@@ -316,6 +397,7 @@ sub _findNextAlbum {
 	return unless $state && $state->{active};
 
 	$state->{pendingLookup} = 1;
+	$state->{pendingSince}  = time();
 
 	my $apiKey = $prefs->get('lastfm_api_key');
 	unless ( $apiKey ) {
@@ -333,6 +415,8 @@ sub _findNextAlbum {
 		_getSimilarTracks($client, $clientId, $seedArtist, $seedTrack, $apiKey, sub {
 			my $similarTracks = shift;
 
+			return unless _isCurrent($clientId, $state);
+
 			if ( $similarTracks && @$similarTracks ) {
 				# Try to pick an album from these similar tracks
 				_pickAlbumFromSimilarTracks($client, $clientId, $similarTracks, $apiKey);
@@ -348,24 +432,21 @@ sub _findNextAlbum {
 	}
 }
 
-# Pick a random track between the second and penultimate of the last
-# queued album to use as the seed for similarity lookups.
+# Pick a random track from the last queued album (between its second and
+# second-to-last track) to use as the seed for similarity lookups.
 sub _getSeedTrack {
 	my ( $client, $clientId ) = @_;
 
 	my $playlistLen = Slim::Player::Playlist::count($client);
 	return unless $playlistLen;
 
-	# Determine the range of the last queued album in the playlist
 	my $state = $playerState{$clientId};
-	my $albumStart = ($state && defined $state->{lastAlbumStartIndex})
-		? $state->{lastAlbumStartIndex} : 0;
-	my $albumEnd = $playlistLen - 1;
+	my ( $albumStart, $albumEnd ) = _lastAlbumRange($client, $state, $playlistLen);
 	my $albumTrackCount = $albumEnd - $albumStart + 1;
 
 	my $targetIndex;
 	if ( $albumTrackCount >= 4 ) {
-		# Random track between second (start+1) and penultimate (end-1) inclusive
+		# Random track between second (start+1) and second-to-last (end-1) inclusive
 		my $lo = $albumStart + 1;
 		my $hi = $albumEnd - 1;
 		$targetIndex = $lo + int(rand($hi - $lo + 1));
@@ -382,34 +463,96 @@ sub _getSeedTrack {
 	my $track = Slim::Player::Playlist::track($client, $targetIndex);
 	return unless $track;
 
-	my ( $title, $artist );
+	my $info = _trackDetails($client, $track);
+	return ( $info->{title}, $info->{artist} );
+}
 
-	if ( blessed($track) ) {
-		$title = $track->title;
+# Work out where the last queued album sits in the playlist.
+#
+# The start is recorded when the album is queued. The end can't be
+# recorded at that point because online albums are added asynchronously,
+# so it is found here instead: starting at the recorded start, the album
+# runs for as long as consecutive tracks carry the same album name. Any
+# tracks the user added after it are therefore not used as seeds.
+sub _lastAlbumRange {
+	my ( $client, $state, $playlistLen ) = @_;
 
-		# Try to get the track's artist
-		if ( $track->can('artistName') ) {
-			$artist = $track->artistName;
+	my $last  = $playlistLen - 1;
+	my $start = ($state && defined $state->{lastAlbumStartIndex})
+		? $state->{lastAlbumStartIndex} : 0;
+
+	my $albumAt = sub {
+		my $t = Slim::Player::Playlist::track($client, shift);
+		return $t ? lc( _trackDetails($client, $t)->{album} || '' ) : '';
+	};
+
+	if ( $start > $last ) {
+		# The recorded start no longer exists (tracks were removed). Use the
+		# block of same-album tracks at the end of the playlist instead.
+		my $name = $albumAt->($last);
+		return ( $last, $last ) unless $name;
+		$start = $last;
+		$start-- while $start > 0 && $albumAt->($start - 1) eq $name;
+		return ( $start, $last );
+	}
+
+	my $name = $albumAt->($start);
+
+	# Without an album name we can't tell where the album ends, so assume
+	# it runs to the end of the playlist
+	return ( $start, $last ) unless $name;
+
+	my $end = $start;
+	$end++ while $end < $last && $albumAt->($end + 1) eq $name;
+
+	return ( $start, $end );
+}
+
+# Title, artist and album name for a playlist track. Uses the library
+# metadata first, then asks the track's service plugin (e.g. TIDAL) for
+# anything missing.
+sub _trackDetails {
+	my ( $client, $track ) = @_;
+
+	my %info = ( title => undef, artist => undef, album => undef );
+	return \%info unless blessed($track);
+
+	$info{title} = $track->title;
+
+	if ( $track->can('artistName') ) {
+		$info{artist} = $track->artistName;
+	}
+	if ( !$info{artist} && $track->can('artist') ) {
+		my $a = $track->artist;
+		$info{artist} = $a->name if $a && blessed($a);
+	}
+
+	if ( $track->can('album') ) {
+		my $album = $track->album;
+		if ( blessed($album) && $album->can('title') ) {
+			$info{album} = $album->title;
+		} elsif ( defined $album && !ref $album ) {
+			$info{album} = $album;
 		}
-		if ( !$artist && $track->can('artist') ) {
-			my $a = $track->artist;
-			$artist = $a->name if $a && blessed($a);
-		}
+	}
+	if ( !$info{album} && $track->can('albumname') ) {
+		$info{album} = $track->albumname;
+	}
 
-		# Try remote metadata if local metadata is missing
-		if ( (!$title || !$artist) && $track->can('url') ) {
-			my $handler = Slim::Player::ProtocolHandlers->handlerForURL($track->url);
-			if ( $handler && $handler->can('getMetadataFor') ) {
-				my $meta = $handler->getMetadataFor($client, $track->url);
-				if ( $meta ) {
-					$title  ||= $meta->{title};
-					$artist ||= $meta->{artist};
-				}
+	# Try remote metadata if local metadata is missing
+	if ( (!$info{title} || !$info{artist} || !$info{album}) && $track->can('url') ) {
+		my $handler = Slim::Player::ProtocolHandlers->handlerForURL($track->url);
+		if ( $handler && $handler->can('getMetadataFor') ) {
+			my $meta = $handler->getMetadataFor($client, $track->url);
+			if ( $meta ) {
+				$info{title}  ||= $meta->{title};
+				$info{artist} ||= $meta->{artist};
+				$info{album}  ||= $meta->{album};
 			}
 		}
 	}
 
-	return ( $title, $artist );
+	return \%info;
 }
 
 # ============================================================
@@ -472,9 +615,9 @@ sub _getSimilarTracks {
 	)->get($url);
 }
 
-# Walk similar tracks and find an album we haven't played yet.
-# For each candidate track, we need to resolve which album it belongs to.
-# Strategy: use Last.fm track.getInfo to get the album, or search locally.
+# Walk the similar tracks in order and queue the first album that passes
+# the checks and can actually be found. track.getInfo is used to find
+# which album each candidate track belongs to.
 sub _pickAlbumFromSimilarTracks {
 	my ( $client, $clientId, $similarTracks, $apiKey ) = @_;
 
@@ -495,58 +638,100 @@ sub _tryNextSimilarTrack {
 	}
 
 	my $track = $tracks->[$index];
+	my $next  = sub { _tryNextSimilarTrack($client, $clientId, $tracks, $index + 1, $apiKey) };
+
 	$log->debug("Album Mix: Checking similar track '$track->{title}' by '$track->{artist}' (match: $track->{match})");
 
-	# First, try to resolve the album via track.getInfo (which includes album name)
+	# Skip the Last.fm lookup entirely if the artist is on cooldown
+	if ( _isArtistOnCooldown($clientId, $track->{artist}) ) {
+		$log->debug("Album Mix: '$track->{artist}' on cooldown, skipping");
+		$next->();
+		return;
+	}
+
 	_getTrackAlbum($client, $clientId, $track->{artist}, $track->{title}, $apiKey, sub {
 		my $albumName = shift;
 
-		my $state = $playerState{$clientId};
-		return unless $state && $state->{active};
+		return unless _isCurrent($clientId, $state);
 
-		if ( $albumName ) {
-			my $key = _historyKey($track->{artist}, $albumName);
-			if ( grep { $_ eq $key } @{$state->{history}} ) {
-				# Already played this album — try next track
-				$log->debug("Album Mix: '$albumName' by '$track->{artist}' already in history, skipping");
-				_tryNextSimilarTrack($client, $clientId, $tracks, $index + 1, $apiKey);
-				return;
-			}
-
-			# Artist cooldown — skip if this artist was picked too recently
-			if ( _isArtistOnCooldown($clientId, $track->{artist}) ) {
-				$log->debug("Album Mix: '$track->{artist}' on cooldown, skipping '$albumName'");
-				_tryNextSimilarTrack($client, $clientId, $tracks, $index + 1, $apiKey);
-				return;
-			}
-
-			$log->info("Album Mix: Selected '$albumName' by '$track->{artist}' (via similar track '$track->{title}')");
-
-			$state->{seedArtist} = $track->{artist};
-			$state->{seedAlbum}  = $albumName;
-
-			_addToHistory($clientId, $track->{artist}, $albumName);
-			_addArtistToHistory($clientId, $track->{artist});
-
-			_findAndPlayAlbum($client, $track->{artist}, $albumName, 'add', sub {
-				$state->{pendingLookup} = 0;
-
-				$client->showBriefly({
-					jive => {
-						type  => 'mixed',
-						style => 'add',
-						text  => [ sprintf(
-							cstring($client, 'PLUGIN_ALBUM_MIX_QUEUED'),
-							"$albumName — $track->{artist}"
-						) ],
-					},
-				});
-			});
-		} else {
+		unless ( $albumName ) {
 			# No album info for this track — try the next similar track
-			_tryNextSimilarTrack($client, $clientId, $tracks, $index + 1, $apiKey);
+			$next->();
+			return;
 		}
+
+		if ( my $reason = _skipReason($clientId, $track->{artist}, $albumName) ) {
+			$log->debug("Album Mix: Skipping '$albumName' by '$track->{artist}' ($reason)");
+			$next->();
+			return;
+		}
+
+		_queueCandidate($client, $clientId, $track->{artist}, $albumName,
+			"via similar track '$track->{title}'", $next);
 	});
+}
+
+# Why a candidate album should not be queued, or undef if it's fine.
+sub _skipReason {
+	my ( $clientId, $artist, $album ) = @_;
+
+	my $state = $playerState{$clientId} || return 'no active mix';
+	my $key   = _historyKey($artist, $album);
+
+	return 'already played this session'  if grep { $_ eq $key } @{$state->{history}};
+	return "already tried: $state->{skipped}->{$key}" if $state->{skipped}->{$key};
+	return 'artist on cooldown'           if _isArtistOnCooldown($clientId, $artist);
+
+	return;
+}
+
+# Try to queue one candidate album. Only when it was actually found and
+# added is it recorded in the history, the artist cooldown and as the
+# new seed. If it can't be queued (not found anywhere, or already owned
+# in Discovery Mode) it is remembered as skipped for this session and
+# $onFail is called so the caller can move on to the next candidate.
+sub _queueCandidate {
+	my ( $client, $clientId, $artist, $album, $via, $onFail ) = @_;
+
+	my $state = $playerState{$clientId};
+	return unless $state && $state->{active};
+
+	$log->info("Album Mix: Trying '$album' by '$artist' ($via)");
+
+	_findAndPlayAlbum($client, $artist, $album, 'add', sub {
+		my ( $found, $reason ) = @_;
+
+		return unless _isCurrent($clientId, $state);
+
+		unless ( $found ) {
+			$reason ||= 'not found';
+			$log->info("Album Mix: Could not queue '$album' by '$artist' ($reason), trying next candidate");
+			$state->{skipped}->{ _historyKey($artist, $album) } = $reason;
+			$onFail->();
+			return;
+		}
+
+		$log->info("Album Mix: Queued '$album' by '$artist' ($via)");
+
+		$state->{seedArtist} = $artist;
+		$state->{seedAlbum}  = $album;
+
+		_addToHistory($clientId, $artist, $album);
+		_addArtistToHistory($clientId, $artist);
+
+		$state->{pendingLookup} = 0;
+
+		$client->showBriefly({
+			jive => {
+				type  => 'mixed',
+				style => 'add',
+				text  => [ sprintf(
+					cstring($client, 'PLUGIN_ALBUM_MIX_QUEUED'),
+					"$album — $artist"
+				) ],
+			},
+		});
+	}, { skipOwned => $prefs->get('discover_new') ? 1 : 0 });
 }
 
 # Resolve a track's album via Last.fm track.getInfo
@@ -605,6 +790,8 @@ sub _findNextAlbumByArtist {
 	_getSimilarArtists($client, $clientId, $seedArtist, $apiKey, sub {
 		my $similarArtists = shift;
 
+		return unless _isCurrent($clientId, $state);
+
 		unless ( $similarArtists && @$similarArtists ) {
 			$log->warn("Album Mix: No similar artists found for '$seedArtist'");
 			$state->{pendingLookup} = 0;
@@ -612,6 +799,7 @@ sub _findNextAlbumByArtist {
 		}
 
 		# Include the seed artist for different-album-by-same-artist results
+		# (only used when Artist Cooldown is 0, as the seed artist has just played)
 		unshift @$similarArtists, {
 			name  => $seedArtist,
 			match => 1.0,
@@ -704,48 +892,36 @@ sub _tryNextArtist {
 	_getTopAlbums($client, $clientId, $artist->{name}, $apiKey, sub {
 		my $albums = shift;
 
-		my $state = $playerState{$clientId};
-		return unless $state && $state->{active};
+		return unless _isCurrent($clientId, $state);
 
-		my @candidates;
-		for my $album ( @$albums ) {
-			my $key = _historyKey($artist->{name}, $album->{name});
-			unless ( grep { $_ eq $key } @{$state->{history}} ) {
-				push @candidates, {
-					artist => $artist->{name},
-					album  => $album->{name},
-					mbid   => $album->{mbid} || '',
-				};
-			}
-		}
+		# Albums in Last.fm popularity order, minus any that were already
+		# played or already tried this session
+		my @candidates = grep {
+			!_skipReason($clientId, $artist->{name}, $_->{name})
+		} @$albums;
 
-		if ( @candidates ) {
-			my $pick = $candidates[0];
-			$log->info("Album Mix: Selected '$pick->{album}' by '$pick->{artist}' (artist fallback)");
+		_tryArtistAlbum($client, $clientId, $artists, $index, \@candidates, 0, $apiKey);
+	});
+}
 
-			$state->{seedArtist} = $pick->{artist};
-			$state->{seedAlbum}  = $pick->{album};
+# Try this artist's candidate albums in turn; when none can be queued,
+# move on to the next similar artist.
+sub _tryArtistAlbum {
+	my ( $client, $clientId, $artists, $artistIndex, $candidates, $albumIndex, $apiKey ) = @_;
 
-			_addToHistory($clientId, $pick->{artist}, $pick->{album});
-			_addArtistToHistory($clientId, $pick->{artist});
+	my $state = $playerState{$clientId};
+	return unless $state && $state->{active};
 
-			_findAndPlayAlbum($client, $pick->{artist}, $pick->{album}, 'add', sub {
-				$state->{pendingLookup} = 0;
+	if ( $albumIndex >= scalar @$candidates ) {
+		_tryNextArtist($client, $clientId, $artists, $artistIndex + 1, $apiKey);
+		return;
+	}
 
-				$client->showBriefly({
-					jive => {
-						type  => 'mixed',
-						style => 'add',
-						text  => [ sprintf(
-							cstring($client, 'PLUGIN_ALBUM_MIX_QUEUED'),
-							"$pick->{album} — $pick->{artist}"
-						) ],
-					},
-				});
-			});
-		} else {
-			_tryNextArtist($client, $clientId, $artists, $index + 1, $apiKey);
-		}
+	my $artist = $artists->[$artistIndex]->{name};
+	my $album  = $candidates->[$albumIndex]->{name};
+
+	_queueCandidate($client, $clientId, $artist, $album, 'artist fallback', sub {
+		_tryArtistAlbum($client, $clientId, $artists, $artistIndex, $candidates, $albumIndex + 1, $apiKey);
 	});
 }
 
@@ -806,143 +982,128 @@ sub _getTopAlbums {
 # Album resolution — find in library or online services
 # ============================================================
 
+# Find an album and load it ($cmd 'load') or append it ($cmd 'add').
+# $callback->($found, $reason) is always called exactly once; $found is
+# true only if the album was actually sent to the playlist.
+#
+# Where to look depends on the settings:
+#   Discovery Mode   — online services first, library as last resort.
+#                      With $opts->{skipOwned} (used for every album the
+#                      mix picks, but not for the seed album) an album that
+#                      is in the local library is refused instead, so the
+#                      mix only queues music you don't already own.
+#   Prefer Local     — library first, then online services.
+#   neither          — online services first, library as last resort.
 sub _findAndPlayAlbum {
-	my ( $client, $artist, $album, $cmd, $callback ) = @_;
+	my ( $client, $artist, $album, $cmd, $callback, $opts ) = @_;
 
 	$callback ||= sub {};
+	$opts     ||= {};
 
 	# Record where this album will start in the playlist (for seed track selection)
 	my $clientId = $client->master->id;
 	my $preCount = Slim::Player::Playlist::count($client);
 
-	my $wrappedCallback = sub {
-		# After the album is added, record its start index
-		my $postCount = Slim::Player::Playlist::count($client);
-		if ( my $state = $playerState{$clientId} ) {
-			if ( $cmd eq 'load' ) {
-				$state->{lastAlbumStartIndex} = 0;
-			} else {
-				$state->{lastAlbumStartIndex} = $preCount;
-			}
-			$log->debug("Album Mix: Last album starts at playlist index $state->{lastAlbumStartIndex} (playlist now $postCount tracks)");
+	my $done = sub {
+		my ( $found, $reason ) = @_;
+
+		if ( $found && (my $state = $playerState{$clientId}) ) {
+			$state->{lastAlbumStartIndex} = $cmd eq 'load' ? 0 : $preCount;
+			$log->debug("Album Mix: Last album starts at playlist index $state->{lastAlbumStartIndex}");
 		}
-		$callback->();
+
+		$callback->($found, $reason);
 	};
 
-	if ( $prefs->get('discover_new') ) {
-		# Discovery mode: prefer albums NOT in the local library
-		# Try online first; fall back to local only if online fails
-		_findOnlineAlbum($client, $artist, $album, $cmd, $wrappedCallback, sub {
-			# Online failed — fall back to local
-			_findLocalAlbum($client, $artist, $album, sub {
-				my $localAlbumId = shift;
+	my $localAlbumId = _findLocalAlbum($client, $artist, $album);
 
-				if ( $localAlbumId ) {
-					$log->info("Album Mix: Discovery fallback — found '$album' locally (id: $localAlbumId)");
-					$client->execute(['playlistcontrol', "cmd:$cmd", "album_id:$localAlbumId"]);
-					$wrappedCallback->();
-				} else {
-					$log->warn("Album Mix: Could not find '$album' by '$artist' anywhere");
-					$wrappedCallback->();
-				}
-			});
-		});
-	} elsif ( $prefs->get('prefer_local') ) {
-		_findLocalAlbum($client, $artist, $album, sub {
-			my $localAlbumId = shift;
+	my $playLocal = sub {
+		$log->info("Album Mix: Found '$album' in local library (id: $localAlbumId)");
+		$client->execute(['playlistcontrol', "cmd:$cmd", "album_id:$localAlbumId"]);
+		$done->(1);
+	};
 
-			if ( $localAlbumId ) {
-				$log->info("Album Mix: Found '$album' in local library (id: $localAlbumId)");
-				$client->execute(['playlistcontrol', "cmd:$cmd", "album_id:$localAlbumId"]);
-				$wrappedCallback->();
-			} else {
-				_findOnlineAlbum($client, $artist, $album, $cmd, $wrappedCallback);
-			}
-		});
-	} else {
-		_findOnlineAlbum($client, $artist, $album, $cmd, $wrappedCallback);
+	if ( $prefs->get('discover_new') && $opts->{skipOwned} && $localAlbumId ) {
+		$log->info("Album Mix: Discovery Mode — '$album' by '$artist' is already in your library, skipping");
+		$done->(0, 'already in library');
+		return;
 	}
+
+	if ( !$prefs->get('discover_new') && $prefs->get('prefer_local') && $localAlbumId ) {
+		$playLocal->();
+		return;
+	}
+
+	_findOnlineAlbum($client, $artist, $album, $cmd, sub {
+		my $found = shift;
+
+		if ( $found ) {
+			$done->(1);
+		} elsif ( $localAlbumId ) {
+			# Not online — fall back to the library copy
+			$playLocal->();
+		} else {
+			$log->warn("Album Mix: Could not find '$album' by '$artist' in the library or online");
+			$done->(0, 'not found in library or online');
+		}
+	});
 }
 
+# Look an album up in the local library. Returns the album id, or undef.
+# Tries an exact match, then case-insensitive, then a partial title match
+# (so "Album" also finds "Album (Deluxe)").
 sub _findLocalAlbum {
-	my ( $client, $artist, $album, $callback ) = @_;
+	my ( $client, $artist, $album ) = @_;
 
 	my $dbh = Slim::Schema->dbh;
 
-	# Exact match
-	my $sth = $dbh->prepare_cached(
-		"SELECT albums.id FROM albums "
-		. "JOIN contributors ON contributors.id = albums.contributor "
-		. "WHERE albums.title = ? AND contributors.name = ? "
-		. "LIMIT 1"
+	my @queries = (
+		# Exact match
+		[ "WHERE albums.title = ? AND contributors.name = ? ",
+			$album, $artist ],
+		# Case-insensitive match
+		[ "WHERE LOWER(albums.title) = LOWER(?) AND LOWER(contributors.name) = LOWER(?) ",
+			$album, $artist ],
+		# LIKE match for partial titles (e.g. "Album" matches "Album (Deluxe)")
+		[ "WHERE LOWER(albums.title) LIKE ? AND LOWER(contributors.name) LIKE ? ",
+			'%' . lc($album) . '%', '%' . lc($artist) . '%' ],
 	);
-	$sth->execute($album, $artist);
-	my ($albumId) = $sth->fetchrow_array;
-	$sth->finish;
 
-	if ( $albumId ) {
-		$callback->($albumId);
-		return;
+	for my $q ( @queries ) {
+		my ( $where, @bind ) = @$q;
+
+		my $sth = $dbh->prepare_cached(
+			"SELECT albums.id FROM albums "
+			. "JOIN contributors ON contributors.id = albums.contributor "
+			. $where
+			. "LIMIT 1"
+		);
+		$sth->execute(@bind);
+		my ($albumId) = $sth->fetchrow_array;
+		$sth->finish;
+
+		return $albumId if $albumId;
 	}
 
-	# Case-insensitive match
-	$sth = $dbh->prepare_cached(
-		"SELECT albums.id FROM albums "
-		. "JOIN contributors ON contributors.id = albums.contributor "
-		. "WHERE LOWER(albums.title) = LOWER(?) AND LOWER(contributors.name) = LOWER(?) "
-		. "LIMIT 1"
-	);
-	$sth->execute($album, $artist);
-	($albumId) = $sth->fetchrow_array;
-	$sth->finish;
-
-	if ( $albumId ) {
-		$callback->($albumId);
-		return;
-	}
-
-	# LIKE match for partial titles (e.g. "Album" matches "Album (Deluxe)")
-	$sth = $dbh->prepare_cached(
-		"SELECT albums.id FROM albums "
-		. "JOIN contributors ON contributors.id = albums.contributor "
-		. "WHERE LOWER(albums.title) LIKE ? AND LOWER(contributors.name) LIKE ? "
-		. "LIMIT 1"
-	);
-	$sth->execute( '%' . lc($album) . '%', '%' . lc($artist) . '%' );
-	($albumId) = $sth->fetchrow_array;
-	$sth->finish;
-
-	$callback->($albumId);
+	return;
 }
 
+# Search the enabled online services in turn.
+# $callback->(1) once one of them has added the album, $callback->(0) if
+# none had it (or no supported service is enabled).
 sub _findOnlineAlbum {
-	my ( $client, $artist, $album, $cmd, $callback, $errorCallback ) = @_;
-
-	$callback ||= sub {};
-
-	$log->info("Album Mix: Searching online services for '$album' by '$artist'");
+	my ( $client, $artist, $album, $cmd, $callback ) = @_;
 
 	my @services = _getAvailableServices();
 
-	if ( @services ) {
-		_tryOnlineService($client, $artist, $album, $cmd, \@services, 0, $callback, $errorCallback);
-	} else {
-		if ( $errorCallback ) {
-			# Discovery mode: let caller handle the fallback
-			$errorCallback->();
-		} else {
-			# No online services — try local as last resort
-			_findLocalAlbum($client, $artist, $album, sub {
-				my $albumId = shift;
-				if ( $albumId ) {
-					$client->execute(['playlistcontrol', "cmd:$cmd", "album_id:$albumId"]);
-				} else {
-					$log->warn("Album Mix: Could not find '$album' by '$artist' anywhere");
-				}
-				$callback->();
-			});
-		}
+	unless ( @services ) {
+		$log->info("Album Mix: No supported online service enabled");
+		$callback->(0);
+		return;
 	}
+
+	$log->info("Album Mix: Searching online services for '$album' by '$artist'");
+	_tryOnlineService($client, $artist, $album, $cmd, \@services, 0, $callback);
 }
 
 sub _getAvailableServices {
@@ -965,17 +1126,11 @@ sub _getAvailableServices {
 }
 
 sub _tryOnlineService {
-	my ( $client, $artist, $album, $cmd, $services, $index, $callback, $errorCallback ) = @_;
-
-	$callback ||= sub {};
+	my ( $client, $artist, $album, $cmd, $services, $index, $callback ) = @_;
 
 	if ( $index >= scalar @$services ) {
 		$log->info("Album Mix: No online service had '$album' by '$artist'");
-		if ( $errorCallback ) {
-			$errorCallback->();
-		} else {
-			$callback->();
-		}
+		$callback->(0);
 		return;
 	}
 
@@ -987,18 +1142,19 @@ sub _tryOnlineService {
 		tidal  => \&_searchTidal,
 	}->{$service};
 
-	if ( $handler ) {
-		$handler->($client, $artist, $album, $cmd, sub {
-			my $found = shift;
-			if ( $found ) {
-				$callback->();
-			} else {
-				_tryOnlineService($client, $artist, $album, $cmd, $services, $index + 1, $callback, $errorCallback);
-			}
-		});
-	} else {
-		_tryOnlineService($client, $artist, $album, $cmd, $services, $index + 1, $callback, $errorCallback);
+	unless ( $handler ) {
+		_tryOnlineService($client, $artist, $album, $cmd, $services, $index + 1, $callback);
+		return;
 	}
+
+	$handler->($client, $artist, $album, $cmd, sub {
+		my $found = shift;
+		if ( $found ) {
+			$callback->(1);
+		} else {
+			_tryOnlineService($client, $artist, $album, $cmd, $services, $index + 1, $callback);
+		}
+	});
 }
 
 sub _searchSpotty {
@@ -1011,26 +1167,34 @@ sub _searchSpotty {
 				$api->search(sub {
 					my $results = shift;
 
+					my @items;
 					if ( ref $results eq 'HASH' && $results->{albums} && ref $results->{albums} eq 'HASH' && $results->{albums}->{items} ) {
-						for my $item ( @{$results->{albums}->{items}} ) {
-							if ( $item->{uri} ) {
-								$log->info("Album Mix: Found on Spotify: $item->{name}");
-								$client->execute([
-									'playlist',
-									$cmd eq 'load' ? 'play' : 'add',
-									$item->{uri},
-								]);
-								$callback->(1);
-								return;
-							}
-						}
+						@items = grep { $_->{uri} } @{$results->{albums}->{items}};
 					}
 
+					# Only accept a result whose artist and album title match
+					my $match = _bestAlbumMatch($artist, $album, \@items,
+						sub { $_[0]->{name} },
+						sub { $_[0]->{artists} && $_[0]->{artists}->[0] ? $_[0]->{artists}->[0]->{name} : '' },
+					);
+
+					if ( $match ) {
+						$log->info("Album Mix: Found on Spotify: $match->{name}");
+						$client->execute([
+							'playlist',
+							$cmd eq 'load' ? 'play' : 'add',
+							$match->{uri},
+						]);
+						$callback->(1);
+						return;
+					}
+
+					$log->info("Album Mix: No matching album found on Spotify");
 					$callback->(0);
 				}, {
 					search => "album:$album artist:$artist",
 					type   => 'albums',
-					limit  => 5,
+					limit  => 10,
 				});
 				return;
 			}
@@ -1072,31 +1236,30 @@ sub _searchTidal {
 									? @{$albums->{items}} : ());
 						}
 					}
+					@items = grep { ref $_ eq 'HASH' && $_->{id} } @items;
 
 					$log->info("Album Mix: TIDAL returned " . scalar(@items) . " album results");
 
-					my $lcArtist = lc($artist);
-					for my $item ( @items ) {
-						if ( my $id = $item->{id} ) {
-							# Validate artist match to avoid picking the wrong album
-							my $itemArtist = $item->{artist} || ($item->{artists} && $item->{artists}->[0]) || {};
-							my $itemArtistName = $itemArtist->{name} || '';
-							my $itemTitle = $item->{title} || '';
+					# Only accept a result whose artist and album title match,
+					# so a different album by the same artist isn't queued
+					my $match = _bestAlbumMatch($artist, $album, \@items,
+						sub { $_[0]->{title} },
+						sub {
+							my $a = $_[0]->{artist} || ($_[0]->{artists} && $_[0]->{artists}->[0]) || {};
+							return $a->{name} || '';
+						},
+					);
 
-							if ( $itemArtistName && lc($itemArtistName) ne $lcArtist ) {
-								$log->debug("Album Mix: TIDAL result '$itemTitle' by '$itemArtistName' — artist mismatch, skipping");
-								next;
-							}
-
-							$log->info("Album Mix: Found on TIDAL: $itemTitle by $itemArtistName (id: $id)");
-							$client->execute([
-								'playlist',
-								$cmd eq 'load' ? 'play' : 'add',
-								"tidal://album:$id",
-							]);
-							$callback->(1);
-							return;
-						}
+					if ( $match ) {
+						my $itemArtist = $match->{artist} || ($match->{artists} && $match->{artists}->[0]) || {};
+						$log->info("Album Mix: Found on TIDAL: $match->{title} by " . ($itemArtist->{name} || '?') . " (id: $match->{id})");
+						$client->execute([
+							'playlist',
+							$cmd eq 'load' ? 'play' : 'add',
+							"tidal://album:$match->{id}",
+						]);
+						$callback->(1);
+						return;
 					}
 
 					$log->info("Album Mix: No matching album found on TIDAL");
@@ -1104,7 +1267,7 @@ sub _searchTidal {
 				}, {
 					search => "$artist $album",
 					type   => 'albums',
-					limit  => 5,
+					limit  => 10,
 				});
 				return;
 			} else {
@@ -1120,6 +1283,83 @@ sub _searchTidal {
 		$log->warn("Album Mix: TIDAL search error: $@");
 		$callback->(0);
 	}
+}
+
+# ============================================================
+# Name matching (album titles and artist names)
+# ============================================================
+
+# Reduce a name to a comparable form: lower case, no bracketed notes such
+# as "(Deluxe Edition)" or "[2011 Remaster]", no " - Remastered" style
+# suffixes, "&" read as "and", no leading "The", no punctuation.
+sub _normaliseName {
+	my $name = lc( shift // '' );
+	my $orig = $name;
+
+	$name =~ s/\s*[\(\[][^\)\]]*[\)\]]//g;
+	$name =~ s/\s+-\s+.*\b(?:remaster(?:ed)?|deluxe|edition|expanded|anniversary|version|mono|stereo|bonus)\b.*$//;
+	$name =~ s/&/ and /g;
+	$name =~ s/^\s*the\s+//;
+	$name =~ s/[^\p{L}\p{N}]+/ /g;
+	$name =~ s/^\s+|\s+$//g;
+
+	# A name that was nothing but a bracketed note, e.g. "(Untitled)"
+	if ( $name eq '' ) {
+		($name = $orig) =~ s/[^\p{L}\p{N}]+/ /g;
+		$name =~ s/^\s+|\s+$//g;
+	}
+
+	return $name;
+}
+
+# How well two names match: 2 = same after normalising, 1 = one contains
+# the other as whole words (e.g. "Abbey Road" in "Abbey Road Anniversary
+# Edition"), 0 = no match.
+sub _nameMatchScore {
+	my ( $a, $b ) = map { _normaliseName($_) } @_;
+
+	return 0 unless length $a && length $b;
+	return 2 if $a eq $b;
+
+	my ( $short, $long ) = length $a <= length $b ? ( $a, $b ) : ( $b, $a );
+	return 1 if index(" $long ", " $short ") >= 0;
+
+	return 0;
+}
+
+# Pick the search result that best matches the wanted artist and album.
+# Results whose artist doesn't match are ignored (a result with no artist
+# is given the benefit of the doubt); of the rest, an identical title
+# beats one that only matches after normalising (e.g. a deluxe edition),
+# which beats a partial match. Returns undef if nothing matches.
+sub _bestAlbumMatch {
+	my ( $artist, $album, $items, $getTitle, $getArtist ) = @_;
+
+	my ( $best, $bestScore ) = ( undef, 0 );
+	my $wanted = lc($album);
+
+	for my $item ( @$items ) {
+		my $itemTitle  = $getTitle->($item)  || '';
+		my $itemArtist = $getArtist->($item) || '';
+
+		if ( $itemArtist && !_nameMatchScore($artist, $itemArtist) ) {
+			$log->debug("Album Mix: Result '$itemTitle' by '$itemArtist' — artist mismatch, skipping");
+			next;
+		}
+
+		my $score = _nameMatchScore($album, $itemTitle);
+		unless ( $score ) {
+			$log->debug("Album Mix: Result '$itemTitle' by '$itemArtist' — title mismatch, skipping");
+			next;
+		}
+
+		$score = 3 if lc($itemTitle) eq $wanted;
+
+		( $best, $bestScore ) = ( $item, $score ) if $score > $bestScore;
+		last if $bestScore == 3;
+	}
+
+	return $best;
 }
 
 # ============================================================

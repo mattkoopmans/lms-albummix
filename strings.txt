@@ -38,13 +38,13 @@ PLUGIN_ALBUM_MIX_PREFER_LOCAL
 	EN	Prefer Local Library
 
 PLUGIN_ALBUM_MIX_PREFER_LOCAL_DESC
-	EN	When enabled, the plugin will search your local library first before trying online music services.
+	EN	When enabled, the plugin searches your local library first before trying online music services. Ignored when Discovery Mode is on.
 
 PLUGIN_ALBUM_MIX_DISCOVER_NEW
 	EN	Discovery Mode
 
 PLUGIN_ALBUM_MIX_DISCOVER_NEW_DESC
-	EN	When enabled, prefer albums from online services over the local library. Great for discovering new music you don't already own.
+	EN	When enabled, the mix only queues albums that are not in your local library, played from your online service (TIDAL or Spotify). Great for discovering new music you don't already own. The album you start the mix from is always played.
 
 PLUGIN_ALBUM_MIX_ARTIST_COOLDOWN
 	EN	Artist Cooldown (albums)

@@ -6,7 +6,7 @@
   <plugins>
     <plugin name="AlbumMix" version="1.1.2" minTarget="8.0" maxTarget="*">
       <title lang="EN">Album Mix</title>
-      <desc lang="EN">Creates continuous, discovery-driven playlists from any seed album using Last.fm track similarity. Supports local library and online services (Spotify, TIDAL, Qobuz, Deezer).</desc>
+      <desc lang="EN">Creates continuous, discovery-driven playlists from any seed album using Last.fm track similarity. Plays albums from your local library or online services (TIDAL, Spotify).</desc>
       <category>playlists</category>
       <url>https://github.com/mattkoopmans/lms-albummix/releases/download/v1.1.2/AlbumMix-1.1.2.zip</url>
       <sha>84c7964e0b997fc9b0c08a8b268cbc46de125e6d</sha>
