@@ -23,6 +23,36 @@ use constant MAX_SIMILAR_ARTISTS      => 20;   # fallback: artist.getSimilar
 use constant MAX_TOP_ALBUMS           => 10;   # fallback: artist.getTopAlbums
 use constant START_GUARD_SECS         => 60;   # max time to ignore "queue replaced" events while the seed album loads
 use constant LOOKUP_TIMEOUT_SECS      => 120;  # a lookup still pending after this long is treated as stuck
+use constant DEFAULT_VARIETY          => 10;   # pick at random among this many of the closest matches
+use constant DEFAULT_REPEAT_DAYS      => 30;   # don't queue an album again within this many days
+use constant DEFAULT_MIN_TRACKS       => 5;    # albums with fewer tracks count as singles/EPs
+use constant MAX_SAVED_HISTORY        => 2000; # most albums kept in the saved history
+
+# Accent folding ("Björk" = "Bjork") when Unicode::Normalize is available
+my $canFoldAccents = eval { require Unicode::Normalize; 1 };
+
+# Album titles that mark a release as something other than a studio album.
+# Matched against the lower-case title, brackets included.
+my %RELEASE_TYPE_PATTERNS = (
+	compilation => qr{
+		\bgreatest\s+hits\b | \bbest\s+of\b | \bvery\s+best\b
+		| ^(?:the\s+)?hits\b | \b(?:biggest|number\s+ones?|smash|top)\s+hits\b
+		| \bcollection$ | \bthe\s+collection\b | \bcollection\s+of\b
+		| \banthology\b | \bthe\s+essential\b | \bessentials\b | \bb-sides\b | \brarities\b
+		| \bnow\s+that'?s\s+what\s+i\s+call\b
+		| \boriginal\s+(?:motion\s+picture\s+)?soundtrack\b | \bsoundtrack\)? \s* $ | [\(\[]\s*soundtrack
+		| \boriginal\s+(?:motion\s+picture|score|cast\s+recording)\b
+		| \bmusic\s+from\s+(?:and\s+inspired\s+by\s+)?the\s+(?:motion\s+picture|film|movie|series|tv|television|original)\b
+		| \bkaraoke\b | \btribute\s+to\b
+	}x,
+	live => qr{
+		(?:^|[\(\[:\-]\s*)live\s+(?:at|in|from)\b | [\(\[]\s*live\b | \s-\s+live\b | \blive\s+\d{4}\b
+		| \bin\s+concert\b | \bunplugged\b | \blive\s+(?:album|recordings?|sessions?)\b | \bbbc\s+sessions\b
+	}x,
+	single => qr{
+		\s-\s+single$ | \s-\s+ep$ | [\(\[]\s*(?:single|ep)\s*[\)\]] | \bep$ | \bremix(?:es|ed)?\b
+	}x,
+);
 
 my $log = Slim::Utils::Log->addLogCategory({
 	'category'     => 'plugin.albummix',
@@ -47,7 +77,18 @@ sub initPlugin {
 		discover_new      => 0,
 		lookahead         => DEFAULT_LOOKAHEAD,
 		artist_cooldown   => DEFAULT_ARTIST_COOLDOWN,
+		filter_compilations => 1,
+		filter_live       => 1,
+		filter_singles    => 1,
+		min_tracks        => DEFAULT_MIN_TRACKS,
+		variety           => DEFAULT_VARIETY,
+		repeat_days       => DEFAULT_REPEAT_DAYS,
+		played_albums     => {},   # saved history: album key => time it was last queued
 	});
+
+	$prefs->setValidate({ validator => 'intlimit', low => 0, high => 50 },   'min_tracks');
+	$prefs->setValidate({ validator => 'intlimit', low => 1, high => 50 },   'variety');
+	$prefs->setValidate({ validator => 'intlimit', low => 0, high => 3650 }, 'repeat_days');
 
 	# Load and register the settings page
 	eval { require Plugins::AlbumMix::Settings };
@@ -254,7 +295,8 @@ sub startAlbumMix {
 		lookupId            => 0,    # increases with every lookup, so a timed-out one can't queue later
 	};
 
-	# Record seed in history
+	# Record seed in this mix's history (the saved history is updated once
+	# the seed has actually loaded)
 	_addToHistory($clientId, $artistName, $albumName);
 	_addArtistToHistory($clientId, $artistName);
 
@@ -263,12 +305,14 @@ sub startAlbumMix {
 	if ( $albumId ) {
 		$client->execute(['playlistcontrol', 'cmd:load', "album_id:$albumId"]);
 		$state->{seedLoaded} = 1;
+		_recordPlayed($artistName, $albumName);
 	} else {
 		_findAndPlayAlbum($client, $artistName, $albumName, 'load', sub {
 			my $found = shift;
 			return unless _isCurrent($clientId, $state);
 			if ( $found ) {
 				$state->{seedLoaded} = 1;
+				_recordPlayed($artistName, $albumName);
 				return;
 			}
 			$log->warn("Album Mix: Could not load the seed album '$albumName' by '$artistName'");
@@ -625,13 +669,19 @@ sub _getSimilarTracks {
 	)->get($url);
 }
 
-# Walk the similar tracks in order and queue the first album that passes
-# the checks and can actually be found. track.getInfo is used to find
-# which album each candidate track belongs to.
+# Walk the similar tracks and queue the first album that passes the
+# checks and can actually be found. track.getInfo is used to find which
+# album each candidate track belongs to.
+#
+# The order isn't strictly closest-first: the closest few (see Variety)
+# are shuffled, with closer matches more likely to come first, so the
+# same seed doesn't always lead to the same album.
 sub _pickAlbumFromSimilarTracks {
 	my ( $client, $clientId, $similarTracks, $apiKey ) = @_;
 
-	_tryNextSimilarTrack($client, $clientId, $similarTracks, 0, $apiKey);
+	my $ordered = _varietyOrder($similarTracks, sub { $_[0]->{match} });
+
+	_tryNextSimilarTrack($client, $clientId, $ordered, 0, $apiKey);
 }
 
 sub _tryNextSimilarTrack {
@@ -692,7 +742,36 @@ sub _skipReason {
 	return "already tried: $state->{skipped}->{$key}" if $state->{skipped}->{$key};
 	return 'artist on cooldown'           if _isArtistOnCooldown($clientId, $artist);
 
+	if ( my $type = _releaseType($album) ) {
+		return "looks like a $type release";
+	}
+
+	if ( my $days = _playedRecently($artist, $album) ) {
+		return "played $days day" . ($days == 1 ? '' : 's') . " ago";
+	}
+
 	return;
+}
+
+# If the album title marks it as a release type the settings filter out,
+# return that type ('compilation', 'live' or 'single/EP'), else undef.
+# Only used for albums the mix picks, never for the album it starts from.
+sub _releaseType {
+	my $title = lc( shift // '' );
+
+	return 'compilation' if $prefs->get('filter_compilations') && $title =~ $RELEASE_TYPE_PATTERNS{compilation};
+	return 'live'        if $prefs->get('filter_live')         && $title =~ $RELEASE_TYPE_PATTERNS{live};
+	return 'single/EP'   if $prefs->get('filter_singles')      && $title =~ $RELEASE_TYPE_PATTERNS{single};
+
+	return;
+}
+
+# Minimum number of tracks for an album the mix picks, or 0 for no limit.
+# Part of the singles/EP filter, so it is off when that filter is off.
+sub _minTracks {
+	return 0 unless $prefs->get('filter_singles');
+	my $min = $prefs->get('min_tracks');
+	return defined $min ? $min : DEFAULT_MIN_TRACKS;
 }
 
 # Try to queue one candidate album. Only when it was actually found and
@@ -718,7 +797,7 @@ sub _queueCandidate {
 	$log->info("Album Mix: Trying '$album' by '$artist' ($via)");
 
 	_findAndPlayAlbum($client, $artist, $album, 'add', sub {
-		my ( $found, $reason ) = @_;
+		my ( $found, $reason, $matchedTitle ) = @_;
 
 		return unless _isCurrent($clientId, $state);
 
@@ -744,6 +823,15 @@ sub _queueCandidate {
 
 		_addToHistory($clientId, $artist, $album);
 		_addArtistToHistory($clientId, $artist);
+		_recordPlayed($artist, $album);
+
+		# If the album found under that name has a different title (e.g.
+		# Last.fm said "Abbey Road", TIDAL had "Abbey Road (Remastered)"),
+		# remember that title too
+		if ( $matchedTitle && _historyKey($artist, $matchedTitle) ne _historyKey($artist, $album) ) {
+			_addToHistory($clientId, $artist, $matchedTitle);
+			_recordPlayed($artist, $matchedTitle);
+		}
 
 		$state->{pendingLookup} = 0;
 
@@ -757,7 +845,12 @@ sub _queueCandidate {
 				) ],
 			},
 		});
-	}, { skipOwned => $prefs->get('discover_new') ? 1 : 0, isWanted => $isWanted });
+	}, {
+		skipOwned => $prefs->get('discover_new') ? 1 : 0,
+		isWanted  => $isWanted,
+		minTracks => _minTracks(),
+		checkType => 1,
+	});
 }
 
 # Resolve a track's album via Last.fm track.getInfo
@@ -823,6 +916,9 @@ sub _findNextAlbumByArtist {
 			$state->{pendingLookup} = 0;
 			return;
 		}
+
+		# Closest few artists in a weighted random order (see Variety)
+		$similarArtists = _varietyOrder($similarArtists, sub { $_[0]->{match} });
 
 		# Include the seed artist for different-album-by-same-artist results
 		# (only used when Artist Cooldown is 0, as the seed artist has just played)
@@ -920,13 +1016,15 @@ sub _tryNextArtist {
 
 		return unless _isCurrent($clientId, $state);
 
-		# Albums in Last.fm popularity order, minus any that were already
-		# played or already tried this session
+		# The artist's top albums minus any that fail the checks, in random
+		# order (see Variety) so it isn't always the most popular album
 		my @candidates = grep {
 			!_skipReason($clientId, $artist->{name}, $_->{name})
 		} @$albums;
 
-		_tryArtistAlbum($client, $clientId, $artists, $index, \@candidates, 0, $apiKey);
+		my $ordered = _varietyOrder(\@candidates, sub { 1 });
+
+		_tryArtistAlbum($client, $clientId, $artists, $index, $ordered, 0, $apiKey);
 	});
 }
 
@@ -1023,6 +1121,13 @@ sub _getTopAlbums {
 #
 # $opts->{isWanted}, if given, is asked just before an online search adds
 # its result; if it returns false the album is not added.
+# $opts->{minTracks}, if given, rejects albums with fewer tracks (where
+# the track count is known).
+# $opts->{checkType}: also apply the compilation/live/single filters to the
+# title of the album actually found, not just the title that was asked for
+# (so asking for "Rumours" can't end up queuing "Rumours (Live)").
+#
+# On success $callback also gets the title of the album that was queued.
 sub _findAndPlayAlbum {
 	my ( $client, $artist, $album, $cmd, $callback, $opts ) = @_;
 
@@ -1034,25 +1139,42 @@ sub _findAndPlayAlbum {
 	my $preCount = Slim::Player::Playlist::count($client);
 
 	my $done = sub {
-		my ( $found, $reason ) = @_;
+		my ( $found, $reason, $title ) = @_;
 
 		if ( $found && (my $state = $playerState{$clientId}) ) {
 			$state->{lastAlbumStartIndex} = $cmd eq 'load' ? 0 : $preCount;
 			$log->debug("Album Mix: Last album starts at playlist index $state->{lastAlbumStartIndex}");
 		}
 
-		$callback->($found, $reason);
+		$callback->($found, $reason, $title);
 	};
 
-	my $localAlbumId = _findLocalAlbum($client, $artist, $album);
+	my ( $localAlbumId, $localTitle ) = _findLocalAlbum($client, $artist, $album);
+	my $ownedId = $localAlbumId;
+
+	# The library copy is a different kind of release (e.g. a live album
+	# with a similar name): don't use it
+	if ( $localAlbumId && $opts->{checkType} && (my $type = _releaseType($localTitle)) ) {
+		$log->info("Album Mix: Library album '$localTitle' looks like a $type release, not using it");
+		$localAlbumId = undef;
+	}
+
+	# Too short to count as an album: treat the library copy as unusable
+	if ( $localAlbumId && $opts->{minTracks} ) {
+		my $count = _localTrackCount($localAlbumId);
+		if ( defined $count && $count < $opts->{minTracks} ) {
+			$log->info("Album Mix: Library copy of '$album' has only $count tracks, not using it");
+			$localAlbumId = undef;
+		}
+	}
 
 	my $playLocal = sub {
 		$log->info("Album Mix: Found '$album' in local library (id: $localAlbumId)");
 		$client->execute(['playlistcontrol', "cmd:$cmd", "album_id:$localAlbumId"]);
-		$done->(1);
+		$done->(1, undef, $localTitle);
 	};
 
-	if ( $prefs->get('discover_new') && $opts->{skipOwned} && $localAlbumId ) {
+	if ( $prefs->get('discover_new') && $opts->{skipOwned} && $ownedId ) {
 		$log->info("Album Mix: Discovery Mode — '$album' by '$artist' is already in your library, skipping");
 		$done->(0, 'already in library');
 		return;
@@ -1064,10 +1186,10 @@ sub _findAndPlayAlbum {
 	}
 
 	_findOnlineAlbum($client, $artist, $album, $cmd, sub {
-		my ( $found, $reason ) = @_;
+		my ( $found, $reason, $title ) = @_;
 
 		if ( $found ) {
-			$done->(1);
+			$done->(1, undef, $title);
 		} elsif ( $reason ) {
 			# Not wanted any more (see isWanted) — don't fall back to the library
 			$done->(0, $reason);
@@ -1078,61 +1200,103 @@ sub _findAndPlayAlbum {
 			$log->warn("Album Mix: Could not find '$album' by '$artist' in the library or online");
 			$done->(0, 'not found in library or online');
 		}
-	}, $opts->{isWanted});
+	}, $opts);
 }
 
-# Look an album up in the local library. Returns the album id, or undef.
-# Tries an exact match, then case-insensitive, then a partial match (so
-# "Album" also finds "Album (Deluxe)"). Partial matches are checked with
-# the same name matching as online results, so a short title such as "1"
-# doesn't match "21" or "1999".
+# Look an album up in the local library. Returns ( album id, title ), or
+# an empty list.
+#
+# First tries an exact and a case-insensitive match. Failing that, it
+# looks through the albums of artists whose name contains the wanted
+# artist's name (also using LMS's accent-free search name, so "Bjork"
+# finds "Björk") and accepts a title that is the same once normalised:
+# "Rumours (Remastered)" finds "Rumours" and "Abbey Road" finds
+# "Abbey Road (Super Deluxe Edition)". Unlike online results, a title
+# that merely contains the other ("Led Zeppelin" / "Led Zeppelin II",
+# "Rumours" / "Rumours Live") is not accepted, as that would be a
+# different album.
 sub _findLocalAlbum {
 	my ( $client, $artist, $album ) = @_;
 
 	my $dbh = Slim::Schema->dbh;
 
-	my @queries = (
-		# Exact match
-		[ 1, "WHERE albums.title = ? AND contributors.name = ? ",
-			$album, $artist ],
-		# Case-insensitive match
-		[ 1, "WHERE LOWER(albums.title) = LOWER(?) AND LOWER(contributors.name) = LOWER(?) ",
-			$album, $artist ],
-		# Partial match, verified below
-		[ 20, "WHERE LOWER(albums.title) LIKE ? AND LOWER(contributors.name) LIKE ? ",
-			'%' . lc($album) . '%', '%' . lc($artist) . '%' ],
-	);
+	my $select = "SELECT albums.id, albums.title, contributors.name FROM albums "
+		. "JOIN contributors ON contributors.id = albums.contributor ";
 
-	for my $q ( @queries ) {
-		my ( $limit, $where, @bind ) = @$q;
-
-		my $sth = $dbh->prepare_cached(
-			"SELECT albums.id, albums.title, contributors.name FROM albums "
-			. "JOIN contributors ON contributors.id = albums.contributor "
-			. $where
-			. "LIMIT $limit"
-		);
-		$sth->execute(@bind);
-		my $rows = $sth->fetchall_arrayref;
+	for my $where (
+		"WHERE albums.title = ? AND contributors.name = ? ",
+		"WHERE LOWER(albums.title) = LOWER(?) AND LOWER(contributors.name) = LOWER(?) ",
+	) {
+		my $sth = $dbh->prepare_cached($select . $where . "LIMIT 1");
+		$sth->execute($album, $artist);
+		my ( $albumId, $title ) = $sth->fetchrow_array;
 		$sth->finish;
+		return ( $albumId, $title ) if $albumId;
+	}
 
-		for my $row ( @$rows ) {
-			my ( $albumId, $title, $name ) = @$row;
-			next if $limit > 1
-				&& !( _nameMatchScore($album, $title) && _nameMatchScore($artist, $name) );
-			return $albumId;
-		}
+	# Loose match: candidate albums by the artist, then compare titles.
+	# namesearch is LMS's upper-case, accent-free copy of the name; if this
+	# LMS version doesn't have it, the plain name is used. Very short names
+	# (or "The The") are matched exactly rather than with "contains", which
+	# would match most of the library.
+	(my $artistCore = lc($artist)) =~ s/^\s*the\s+//;
+	my $searchCore = uc( _normaliseName($artist) );
+	my $contains   = length($artistCore) >= 3 && $artistCore ne 'the' && length($searchCore) >= 3;
+
+	my ( $nameWhere, @nameBind ) = $contains
+		? ( "LOWER(contributors.name) LIKE ?", '%' . $artistCore . '%' )
+		: ( "LOWER(contributors.name) = ?", lc($artist) );
+	my ( $searchWhere, @searchBind ) = $contains
+		? ( "contributors.namesearch LIKE ?", '%' . $searchCore . '%' )
+		: ( "contributors.namesearch = ?", $searchCore );
+
+	my $rows = eval {
+		my $sth = $dbh->prepare_cached($select . "WHERE $nameWhere OR $searchWhere LIMIT 500");
+		$sth->execute(@nameBind, @searchBind);
+		my $r = $sth->fetchall_arrayref;
+		$sth->finish;
+		$r;
+	};
+	unless ( $rows ) {
+		my $sth = $dbh->prepare_cached($select . "WHERE $nameWhere LIMIT 500");
+		$sth->execute(@nameBind);
+		$rows = $sth->fetchall_arrayref;
+		$sth->finish;
+	}
+
+	for my $row ( @$rows ) {
+		my ( $albumId, $title, $name ) = @$row;
+		next unless _nameMatchScore($artist, $name);
+		return ( $albumId, $title ) if _nameMatchScore($album, $title) == 2;
 	}
 
 	return;
 }
 
+# Number of tracks in a library album, or undef if it can't be counted.
+sub _localTrackCount {
+	my $albumId = shift;
+
+	my $count = eval {
+		my $sth = Slim::Schema->dbh->prepare_cached("SELECT COUNT(*) FROM tracks WHERE album = ?");
+		$sth->execute($albumId);
+		my ($n) = $sth->fetchrow_array;
+		$sth->finish;
+		$n;
+	};
+
+	return $count;
+}
+
 # Search the enabled online services in turn.
 # $callback->(1) once one of them has added the album, $callback->(0) if
 # none had it (or no supported service is enabled), or
-# $callback->(0, 'no longer wanted') if $isWanted said no.
+# $callback->(0, 'no longer wanted') if $opts->{isWanted} said no.
+# $opts is passed on to the service searches (isWanted, minTracks).
 sub _findOnlineAlbum {
-	my ( $client, $artist, $album, $cmd, $callback, $isWanted ) = @_;
+	my ( $client, $artist, $album, $cmd, $callback, $opts ) = @_;
+
+	$opts ||= {};
 
 	my @services = _getAvailableServices();
 
@@ -1143,7 +1307,7 @@ sub _findOnlineAlbum {
 	}
 
 	$log->info("Album Mix: Searching online services for '$album' by '$artist'");
-	_tryOnlineService($client, $artist, $album, $cmd, \@services, 0, $callback, $isWanted);
+	_tryOnlineService($client, $artist, $album, $cmd, \@services, 0, $callback, $opts);
 }
 
 sub _getAvailableServices {
@@ -1166,7 +1330,7 @@ sub _getAvailableServices {
 }
 
 sub _tryOnlineService {
-	my ( $client, $artist, $album, $cmd, $services, $index, $callback, $isWanted ) = @_;
+	my ( $client, $artist, $album, $cmd, $services, $index, $callback, $opts ) = @_;
 
 	if ( $index >= scalar @$services ) {
 		$log->info("Album Mix: No online service had '$album' by '$artist'");
@@ -1183,24 +1347,28 @@ sub _tryOnlineService {
 	}->{$service};
 
 	unless ( $handler ) {
-		_tryOnlineService($client, $artist, $album, $cmd, $services, $index + 1, $callback, $isWanted);
+		_tryOnlineService($client, $artist, $album, $cmd, $services, $index + 1, $callback, $opts);
 		return;
 	}
 
 	$handler->($client, $artist, $album, $cmd, sub {
-		my ( $found, $reason ) = @_;
+		my ( $found, $reason, $title ) = @_;
 		if ( $found ) {
-			$callback->(1);
+			$callback->(1, undef, $title);
 		} elsif ( $reason ) {
 			$callback->(0, $reason);
 		} else {
-			_tryOnlineService($client, $artist, $album, $cmd, $services, $index + 1, $callback, $isWanted);
+			_tryOnlineService($client, $artist, $album, $cmd, $services, $index + 1, $callback, $opts);
 		}
-	}, $isWanted);
+	}, $opts);
 }
 
 sub _searchSpotty {
-	my ( $client, $artist, $album, $cmd, $done, $isWanted ) = @_;
+	my ( $client, $artist, $album, $cmd, $done, $opts ) = @_;
+
+	$opts ||= {};
+	my $isWanted  = $opts->{isWanted};
+	my $minTracks = $opts->{minTracks} || 0;
 
 	# Make sure the caller hears back exactly once, even if an error is
 	# caught below after the search has already answered
@@ -1218,6 +1386,14 @@ sub _searchSpotty {
 					if ( ref $results eq 'HASH' && $results->{albums} && ref $results->{albums} eq 'HASH' && $results->{albums}->{items} ) {
 						@items = grep { $_->{uri} } @{$results->{albums}->{items}};
 					}
+
+					# Too short to count as an album (singles/EP filter)
+					@items = grep {
+						!$minTracks || !defined $_->{total_tracks} || $_->{total_tracks} >= $minTracks
+					} @items;
+
+					# Not a filtered release type (compilation/live/single)
+					@items = grep { !_releaseType($_->{name}) } @items if $opts->{checkType};
 
 					# Only accept a result whose artist and album title match
 					my $match = _bestAlbumMatch($artist, $album, \@items,
@@ -1238,14 +1414,14 @@ sub _searchSpotty {
 							$cmd eq 'load' ? 'play' : 'add',
 							$match->{uri},
 						]);
-						$callback->(1);
+						$callback->(1, undef, $match->{name});
 						return;
 					}
 
 					$log->info("Album Mix: No matching album found on Spotify");
 					$callback->(0);
 				}, {
-					search => "album:$album artist:$artist",
+					search => 'album:' . _searchTitle($album) . " artist:$artist",
 					type   => 'albums',
 					limit  => 10,
 				});
@@ -1262,7 +1438,11 @@ sub _searchSpotty {
 }
 
 sub _searchTidal {
-	my ( $client, $artist, $album, $cmd, $done, $isWanted ) = @_;
+	my ( $client, $artist, $album, $cmd, $done, $opts ) = @_;
+
+	$opts ||= {};
+	my $isWanted  = $opts->{isWanted};
+	my $minTracks = $opts->{minTracks} || 0;
 
 	# Make sure the caller hears back exactly once, even if an error is
 	# caught below after the search has already answered
@@ -1296,7 +1476,15 @@ sub _searchTidal {
 					}
 					@items = grep { ref $_ eq 'HASH' && $_->{id} } @items;
 
+					# Too short to count as an album (singles/EP filter)
+					@items = grep {
+						!$minTracks || !defined $_->{numberOfTracks} || $_->{numberOfTracks} >= $minTracks
+					} @items;
+
 					$log->info("Album Mix: TIDAL returned " . scalar(@items) . " album results");
+
+					# Not a filtered release type (compilation/live/single)
+					@items = grep { !_releaseType($_->{title}) } @items if $opts->{checkType};
 
 					# Only accept a result whose artist and album title match,
 					# so a different album by the same artist isn't queued
@@ -1322,14 +1510,14 @@ sub _searchTidal {
 							$cmd eq 'load' ? 'play' : 'add',
 							"tidal://album:$match->{id}",
 						]);
-						$callback->(1);
+						$callback->(1, undef, $match->{title});
 						return;
 					}
 
 					$log->info("Album Mix: No matching album found on TIDAL");
 					$callback->(0);
 				}, {
-					search => "$artist $album",
+					search => "$artist " . _searchTitle($album),
 					type   => 'albums',
 					limit  => 10,
 				});
@@ -1353,16 +1541,37 @@ sub _searchTidal {
 # Name matching (album titles and artist names)
 # ============================================================
 
-# Reduce a name to a comparable form: lower case, no bracketed notes such
-# as "(Deluxe Edition)" or "[2011 Remaster]", no " - Remastered" style
-# suffixes, "&" read as "and", no leading "The", no punctuation.
+# Reduce a name to a comparable form: lower case, accents removed, no
+# bracketed notes such as "(Deluxe Edition)" or "[2011 Remaster]", no
+# " - Remastered" or trailing "Deluxe Edition" style suffixes, "&" and
+# "+" read as "and", "Vol." as "volume", "Pt." as "part", no leading
+# "The", no punctuation.
 sub _normaliseName {
 	my $name = lc( shift // '' );
+
+	# Only accents on Latin letters are removed; marks in other scripts
+	# (e.g. Japanese dakuten) change the meaning and are kept
+	if ( $canFoldAccents ) {
+		$name = Unicode::Normalize::NFD($name);
+		$name =~ s/(\p{Latin})\p{Mn}+/$1/g;
+		$name = Unicode::Normalize::NFC($name);
+	}
+
 	my $orig = $name;
 
+	# Trailing edition notes without brackets or a dash, e.g. "Rumours
+	# Remastered", "Abbey Road Super Deluxe Edition", "Ten Legacy Edition".
+	# Words like "Special" only count when followed by "Edition"/"Version",
+	# so a title such as "Something Special" is left alone.
+	my $edition = qr/(?:(?:super\s+)?deluxe|remaster(?:ed)?|expanded)(?:\s+(?:edition|version))?
+		|(?:special|collector'?s|legacy|anniversary|bonus\s+tracks?)\s+(?:edition|version)/x;
+
 	$name =~ s/\s*[\(\[][^\)\]]*[\)\]]//g;
-	$name =~ s/\s+-\s+.*\b(?:remaster(?:ed)?|deluxe|edition|expanded|anniversary|version|mono|stereo|bonus)\b.*$//;
-	$name =~ s/&/ and /g;
+	$name =~ s/\s+-\s+.*\b(?:remaster(?:ed)?|deluxe|edition|expanded|anniversary|version|mono|stereo|bonus|reissue)\b.*$//;
+	$name =~ s/\s+(?:\d{4}\s+)?(?:$edition)\s*$//;
+	$name =~ s/[&+]/ and /g;
+	$name =~ s/\bvol\.?\s*(?=\d|[ivx]+\b)/volume /g;
+	$name =~ s/\bpt\.?\s*(?=\d|[ivx]+\b)/part /g;
 	$name =~ s/^\s*the\s+//;
 	$name =~ s/[^\p{L}\p{N}]+/ /g;
 	$name =~ s/^\s+|\s+$//g;
@@ -1374,6 +1583,16 @@ sub _normaliseName {
 	}
 
 	return $name;
+}
+
+# Album title for an online search: bracketed notes such as
+# "(2011 Remaster)" are dropped, as they often stop the service finding
+# the album at all. Result titles are still checked with _nameMatchScore.
+sub _searchTitle {
+	my $title = shift // '';
+	( my $clean = $title ) =~ s/\s*[\(\[][^\)\]]*[\)\]]//g;
+	$clean =~ s/^\s+|\s+$//g;
+	return length $clean ? $clean : $title;
 }
 
 # How well two names match: 2 = same after normalising, 1 = one contains
@@ -1430,9 +1649,98 @@ sub _bestAlbumMatch {
 # History management
 # ============================================================
 
+# Albums are compared by normalised artist and title, so "Rumours" and
+# "Rumours (Super Deluxe)" count as the same album.
 sub _historyKey {
 	my ( $artist, $album ) = @_;
-	return lc("$artist|||$album");
+	return _nameKey($artist) . '|||' . _nameKey($album);
+}
+
+# Normalised name, or the plain lower-case name for names that are all
+# punctuation (e.g. the band "!!!"), so they don't all share one key.
+sub _nameKey {
+	my $name = shift // '';
+	return _normaliseName($name) || lc($name);
+}
+
+# ------------------------------------------------------------
+# Saved history: remembered across mixes, players and restarts,
+# so an album isn't queued again within "Don't Repeat For" days.
+# ------------------------------------------------------------
+
+sub _recordPlayed {
+	my ( $artist, $album ) = @_;
+
+	my %played = %{ $prefs->get('played_albums') || {} };
+	$played{ _historyKey($artist, $album) } = time();
+
+	# Forget entries older than the repeat window, and keep the list to a
+	# sensible size by dropping the oldest
+	if ( my $days = $prefs->get('repeat_days') ) {
+		my $cutoff = time() - $days * 86400;
+		delete $played{$_} for grep { $played{$_} < $cutoff } keys %played;
+	}
+	if ( keys %played > MAX_SAVED_HISTORY ) {
+		my @oldest = sort { $played{$a} <=> $played{$b} } keys %played;
+		delete @played{ @oldest[ 0 .. keys(%played) - MAX_SAVED_HISTORY - 1 ] };
+	}
+
+	$prefs->set('played_albums', \%played);
+}
+
+# Days since the album was last queued if that is within the repeat
+# window (at least 1), otherwise 0.
+sub _playedRecently {
+	my ( $artist, $album ) = @_;
+
+	my $days = $prefs->get('repeat_days') || 0;
+	return 0 unless $days > 0;
+
+	my $played = $prefs->get('played_albums') || {};
+	my $when   = $played->{ _historyKey($artist, $album) } || return 0;
+
+	my $age = time() - $when;
+	return 0 if $age >= $days * 86400;
+
+	my $ago = int($age / 86400);
+	return $ago < 1 ? 1 : $ago;
+}
+
+# ------------------------------------------------------------
+# Variety
+# ------------------------------------------------------------
+
+# Return the list in a new order: the first N items (N = the Variety
+# setting) are shuffled, with items that have a higher weight more likely
+# to come first; the rest follow in their original order. With Variety 1
+# the order is unchanged.
+#
+# Weighted shuffle: each item gets the key rand() ** (1 / weight) and the
+# items are sorted by key, highest first — an item with twice the weight
+# is twice as likely to be ahead of another.
+sub _varietyOrder {
+	my ( $items, $weightOf ) = @_;
+
+	my $n = $prefs->get('variety');
+	$n = DEFAULT_VARIETY unless defined $n && $n =~ /^\d+$/ && $n > 0;
+
+	my @list = @$items;
+	return \@list if $n <= 1 || @list <= 1;
+
+	$n = @list if $n > @list;
+	my @pool = @list[ 0 .. $n - 1 ];
+	my @rest = @list[ $n .. $#list ];
+
+	my %key;
+	for my $i ( 0 .. $#pool ) {
+		my $w = $weightOf->($pool[$i]) || 0;
+		$w = 0.01 if $w < 0.01;
+		$key{$i} = rand() ** (1 / $w);
+	}
+
+	my @shuffled = map { $pool[$_] } sort { $key{$b} <=> $key{$a} } keys %key;
+
+	return [ @shuffled, @rest ];
 }
 
 sub _addToHistory {
@@ -1459,7 +1767,7 @@ sub _addArtistToHistory {
 	my $state = $playerState{$clientId} || return;
 	my $cooldown = $prefs->get('artist_cooldown') || DEFAULT_ARTIST_COOLDOWN;
 
-	push @{$state->{artist_history}}, lc($artist);
+	push @{$state->{artist_history}}, _nameKey($artist);
 
 	# Keep list trimmed to cooldown size (we only need the last N)
 	while ( scalar @{$state->{artist_history}} > $cooldown ) {
@@ -1475,8 +1783,8 @@ sub _isArtistOnCooldown {
 
 	return 0 unless $cooldown > 0;
 
-	my $lcArtist = lc($artist);
-	return grep { $_ eq $lcArtist } @{$state->{artist_history}};
+	my $key = _nameKey($artist);
+	return grep { $_ eq $key } @{$state->{artist_history}};
 }
 
 1;
