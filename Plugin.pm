@@ -249,7 +249,9 @@ sub startAlbumMix {
 		# Loading the seed album itself fires "queue replaced" events;
 		# ignore them until the seed starts playing (or this time passes)
 		guardUntil          => time() + START_GUARD_SECS,
+		seedLoaded          => 0,    # set once the seed album has been sent to the playlist
 		seenFirstSong       => 0,
+		lookupId            => 0,    # increases with every lookup, so a timed-out one can't queue later
 	};
 
 	# Record seed in history
@@ -257,13 +259,18 @@ sub startAlbumMix {
 	_addArtistToHistory($clientId, $artistName);
 
 	# Load the seed album
+	my $state = $playerState{$clientId};
 	if ( $albumId ) {
 		$client->execute(['playlistcontrol', 'cmd:load', "album_id:$albumId"]);
+		$state->{seedLoaded} = 1;
 	} else {
-		my $state = $playerState{$clientId};
 		_findAndPlayAlbum($client, $artistName, $albumName, 'load', sub {
 			my $found = shift;
-			return if $found || !_isCurrent($clientId, $state);
+			return unless _isCurrent($clientId, $state);
+			if ( $found ) {
+				$state->{seedLoaded} = 1;
+				return;
+			}
 			$log->warn("Album Mix: Could not load the seed album '$albumName' by '$artistName'");
 			stopAlbumMix($client);
 		});
@@ -322,8 +329,10 @@ sub onPlaylistChange {
 	return unless $state && $state->{active};
 
 	# The first song of the mix has started: the seed album has finished
-	# loading, so end the start-up guard shortly after
-	unless ( $state->{seenFirstSong} ) {
+	# loading, so end the start-up guard shortly after. (A song change
+	# before the seed was even sent — e.g. the previous queue moving on
+	# while an online seed is still being searched — doesn't count.)
+	if ( $state->{seedLoaded} && !$state->{seenFirstSong} ) {
 		$state->{seenFirstSong} = 1;
 		my $until = time() + 2;
 		$until = $state->{startedAt} + 5 if $state->{startedAt} + 5 > $until;
@@ -398,6 +407,7 @@ sub _findNextAlbum {
 
 	$state->{pendingLookup} = 1;
 	$state->{pendingSince}  = time();
+	$state->{lookupId}++;
 
 	my $apiKey = $prefs->get('lastfm_api_key');
 	unless ( $apiKey ) {
@@ -696,12 +706,28 @@ sub _queueCandidate {
 	my $state = $playerState{$clientId};
 	return unless $state && $state->{active};
 
+	my $lookupId = $state->{lookupId};
+
+	# Checked by the online searches just before they add anything, so a
+	# search that answers after the mix was stopped or restarted, or after
+	# this lookup timed out and a newer one began, doesn't queue an album
+	my $isWanted = sub {
+		_isCurrent($clientId, $state) && $lookupId == $state->{lookupId};
+	};
+
 	$log->info("Album Mix: Trying '$album' by '$artist' ($via)");
 
 	_findAndPlayAlbum($client, $artist, $album, 'add', sub {
 		my ( $found, $reason ) = @_;
 
 		return unless _isCurrent($clientId, $state);
+
+		# This lookup timed out and a newer one has started; let that one
+		# decide what is queued next
+		if ( $lookupId != $state->{lookupId} ) {
+			$log->info("Album Mix: Ignoring late result for '$album' by '$artist' from a timed-out lookup");
+			return;
+		}
 
 		unless ( $found ) {
 			$reason ||= 'not found';
@@ -731,7 +757,7 @@ sub _queueCandidate {
 				) ],
 			},
 		});
-	}, { skipOwned => $prefs->get('discover_new') ? 1 : 0 });
+	}, { skipOwned => $prefs->get('discover_new') ? 1 : 0, isWanted => $isWanted });
 }
 
 # Resolve a track's album via Last.fm track.getInfo
@@ -994,6 +1020,9 @@ sub _getTopAlbums {
 #                      mix only queues music you don't already own.
 #   Prefer Local     — library first, then online services.
 #   neither          — online services first, library as last resort.
+#
+# $opts->{isWanted}, if given, is asked just before an online search adds
+# its result; if it returns false the album is not added.
 sub _findAndPlayAlbum {
 	my ( $client, $artist, $album, $cmd, $callback, $opts ) = @_;
 
@@ -1035,10 +1064,13 @@ sub _findAndPlayAlbum {
 	}
 
 	_findOnlineAlbum($client, $artist, $album, $cmd, sub {
-		my $found = shift;
+		my ( $found, $reason ) = @_;
 
 		if ( $found ) {
 			$done->(1);
+		} elsif ( $reason ) {
+			# Not wanted any more (see isWanted) — don't fall back to the library
+			$done->(0, $reason);
 		} elsif ( $localAlbumId ) {
 			# Not online — fall back to the library copy
 			$playLocal->();
@@ -1046,12 +1078,14 @@ sub _findAndPlayAlbum {
 			$log->warn("Album Mix: Could not find '$album' by '$artist' in the library or online");
 			$done->(0, 'not found in library or online');
 		}
-	});
+	}, $opts->{isWanted});
 }
 
 # Look an album up in the local library. Returns the album id, or undef.
-# Tries an exact match, then case-insensitive, then a partial title match
-# (so "Album" also finds "Album (Deluxe)").
+# Tries an exact match, then case-insensitive, then a partial match (so
+# "Album" also finds "Album (Deluxe)"). Partial matches are checked with
+# the same name matching as online results, so a short title such as "1"
+# doesn't match "21" or "1999".
 sub _findLocalAlbum {
 	my ( $client, $artist, $album ) = @_;
 
@@ -1059,30 +1093,35 @@ sub _findLocalAlbum {
 
 	my @queries = (
 		# Exact match
-		[ "WHERE albums.title = ? AND contributors.name = ? ",
+		[ 1, "WHERE albums.title = ? AND contributors.name = ? ",
 			$album, $artist ],
 		# Case-insensitive match
-		[ "WHERE LOWER(albums.title) = LOWER(?) AND LOWER(contributors.name) = LOWER(?) ",
+		[ 1, "WHERE LOWER(albums.title) = LOWER(?) AND LOWER(contributors.name) = LOWER(?) ",
 			$album, $artist ],
-		# LIKE match for partial titles (e.g. "Album" matches "Album (Deluxe)")
-		[ "WHERE LOWER(albums.title) LIKE ? AND LOWER(contributors.name) LIKE ? ",
+		# Partial match, verified below
+		[ 20, "WHERE LOWER(albums.title) LIKE ? AND LOWER(contributors.name) LIKE ? ",
 			'%' . lc($album) . '%', '%' . lc($artist) . '%' ],
 	);
 
 	for my $q ( @queries ) {
-		my ( $where, @bind ) = @$q;
+		my ( $limit, $where, @bind ) = @$q;
 
 		my $sth = $dbh->prepare_cached(
-			"SELECT albums.id FROM albums "
+			"SELECT albums.id, albums.title, contributors.name FROM albums "
 			. "JOIN contributors ON contributors.id = albums.contributor "
 			. $where
-			. "LIMIT 1"
+			. "LIMIT $limit"
 		);
 		$sth->execute(@bind);
-		my ($albumId) = $sth->fetchrow_array;
+		my $rows = $sth->fetchall_arrayref;
 		$sth->finish;
 
-		return $albumId if $albumId;
+		for my $row ( @$rows ) {
+			my ( $albumId, $title, $name ) = @$row;
+			next if $limit > 1
+				&& !( _nameMatchScore($album, $title) && _nameMatchScore($artist, $name) );
+			return $albumId;
+		}
 	}
 
 	return;
@@ -1090,9 +1129,10 @@ sub _findLocalAlbum {
 
 # Search the enabled online services in turn.
 # $callback->(1) once one of them has added the album, $callback->(0) if
-# none had it (or no supported service is enabled).
+# none had it (or no supported service is enabled), or
+# $callback->(0, 'no longer wanted') if $isWanted said no.
 sub _findOnlineAlbum {
-	my ( $client, $artist, $album, $cmd, $callback ) = @_;
+	my ( $client, $artist, $album, $cmd, $callback, $isWanted ) = @_;
 
 	my @services = _getAvailableServices();
 
@@ -1103,7 +1143,7 @@ sub _findOnlineAlbum {
 	}
 
 	$log->info("Album Mix: Searching online services for '$album' by '$artist'");
-	_tryOnlineService($client, $artist, $album, $cmd, \@services, 0, $callback);
+	_tryOnlineService($client, $artist, $album, $cmd, \@services, 0, $callback, $isWanted);
 }
 
 sub _getAvailableServices {
@@ -1126,7 +1166,7 @@ sub _getAvailableServices {
 }
 
 sub _tryOnlineService {
-	my ( $client, $artist, $album, $cmd, $services, $index, $callback ) = @_;
+	my ( $client, $artist, $album, $cmd, $services, $index, $callback, $isWanted ) = @_;
 
 	if ( $index >= scalar @$services ) {
 		$log->info("Album Mix: No online service had '$album' by '$artist'");
@@ -1143,22 +1183,29 @@ sub _tryOnlineService {
 	}->{$service};
 
 	unless ( $handler ) {
-		_tryOnlineService($client, $artist, $album, $cmd, $services, $index + 1, $callback);
+		_tryOnlineService($client, $artist, $album, $cmd, $services, $index + 1, $callback, $isWanted);
 		return;
 	}
 
 	$handler->($client, $artist, $album, $cmd, sub {
-		my $found = shift;
+		my ( $found, $reason ) = @_;
 		if ( $found ) {
 			$callback->(1);
+		} elsif ( $reason ) {
+			$callback->(0, $reason);
 		} else {
-			_tryOnlineService($client, $artist, $album, $cmd, $services, $index + 1, $callback);
+			_tryOnlineService($client, $artist, $album, $cmd, $services, $index + 1, $callback, $isWanted);
 		}
-	});
+	}, $isWanted);
 }
 
 sub _searchSpotty {
-	my ( $client, $artist, $album, $cmd, $callback ) = @_;
+	my ( $client, $artist, $album, $cmd, $done, $isWanted ) = @_;
+
+	# Make sure the caller hears back exactly once, even if an error is
+	# caught below after the search has already answered
+	my $answered = 0;
+	my $callback = sub { $done->(@_) unless $answered++ };
 
 	eval {
 		if ( Plugins::Spotty::Plugin->can('getAPIHandler') ) {
@@ -1177,6 +1224,12 @@ sub _searchSpotty {
 						sub { $_[0]->{name} },
 						sub { $_[0]->{artists} && $_[0]->{artists}->[0] ? $_[0]->{artists}->[0]->{name} : '' },
 					);
+
+					if ( $match && $isWanted && !$isWanted->() ) {
+						$log->info("Album Mix: Spotify result for '$album' arrived too late, not adding it");
+						$callback->(0, 'no longer wanted');
+						return;
+					}
 
 					if ( $match ) {
 						$log->info("Album Mix: Found on Spotify: $match->{name}");
@@ -1209,7 +1262,12 @@ sub _searchSpotty {
 }
 
 sub _searchTidal {
-	my ( $client, $artist, $album, $cmd, $callback ) = @_;
+	my ( $client, $artist, $album, $cmd, $done, $isWanted ) = @_;
+
+	# Make sure the caller hears back exactly once, even if an error is
+	# caught below after the search has already answered
+	my $answered = 0;
+	my $callback = sub { $done->(@_) unless $answered++ };
 
 	eval {
 		if ( Plugins::TIDAL::Plugin->can('getAPIHandler') ) {
@@ -1249,6 +1307,12 @@ sub _searchTidal {
 							return $a->{name} || '';
 						},
 					);
+
+					if ( $match && $isWanted && !$isWanted->() ) {
+						$log->info("Album Mix: TIDAL result for '$album' arrived too late, not adding it");
+						$callback->(0, 'no longer wanted');
+						return;
+					}
 
 					if ( $match ) {
 						my $itemArtist = $match->{artist} || ($match->{artists} && $match->{artists}->[0]) || {};
