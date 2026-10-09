@@ -26,4 +26,33 @@
 		<input type="text" class="stdedit" name="pref_lookahead" value="[% prefs.lookahead %]" size="5" />
 	[% END %]
 
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_VARIETY" desc="PLUGIN_ALBUM_MIX_VARIETY_DESC" %]
+		<input type="text" class="stdedit" name="pref_variety" value="[% prefs.variety %]" size="5" />
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_FILTER_COMPILATIONS" desc="PLUGIN_ALBUM_MIX_FILTER_COMPILATIONS_DESC" %]
+		<input type="checkbox" name="pref_filter_compilations" value="1" [% IF prefs.filter_compilations %]checked[% END %] />
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_FILTER_LIVE" desc="PLUGIN_ALBUM_MIX_FILTER_LIVE_DESC" %]
+		<input type="checkbox" name="pref_filter_live" value="1" [% IF prefs.filter_live %]checked[% END %] />
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_FILTER_SINGLES" desc="PLUGIN_ALBUM_MIX_FILTER_SINGLES_DESC" %]
+		<input type="checkbox" name="pref_filter_singles" value="1" [% IF prefs.filter_singles %]checked[% END %] />
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_MIN_TRACKS" desc="PLUGIN_ALBUM_MIX_MIN_TRACKS_DESC" %]
+		<input type="text" class="stdedit" name="pref_min_tracks" value="[% prefs.min_tracks %]" size="5" />
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_REPEAT_DAYS" desc="PLUGIN_ALBUM_MIX_REPEAT_DAYS_DESC" %]
+		<input type="text" class="stdedit" name="pref_repeat_days" value="[% prefs.repeat_days %]" size="5" />
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_CLEAR_HISTORY" desc="PLUGIN_ALBUM_MIX_CLEAR_HISTORY_DESC" %]
+		<input type="checkbox" name="clear_history" value="1" />
+		[% "PLUGIN_ALBUM_MIX_ALBUMS_REMEMBERED" | string %]: [% played_count %]
+	[% END %]
+
 [% PROCESS settings/footer.html %]

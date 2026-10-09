@@ -1,5 +1,18 @@
 # Builds the AlbumMix plugin zip, attaches it to the GitHub release,
-# checks the download works, and only then updates repo.xml on main.
+# checks the download works, and only then updates repo.xml.
+#
+# Which repository file is updated depends on where the tagged commit is:
+#   on main     -> normal release, repo.xml
+#                  (what everyone using the normal repository URL gets)
+#   on Testing  -> pre-release, repo-testing.xml
+#                  (only servers using the testing repository URL get it)
+# Both files live on main, so merging Testing into main never carries a
+# test version into repo.xml.
+#
+# Promoting a tested version: merge Testing into main and push, then run
+# this workflow (Run workflow) for the same tag. It reuses the zip that was
+# already tested, so the SHA stays the same, clears the pre-release flag
+# and updates repo.xml.
 #
 # Normal use:   bump <version> in install.xml, commit, push, then
 #               git tag v1.2.0 && git push origin v1.2.0
@@ -30,6 +43,7 @@ jobs:
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
       REPO: ${{ github.repository }}
+      TEST_BRANCH: Testing
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
@@ -51,6 +65,24 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "ZIPFILE=AlbumMix-$VERSION.zip" >> "$GITHUB_ENV"
 
+      - name: Work out whether this is a main or a Testing release
+        run: |
+          COMMIT=$(git rev-list -n 1 "$TAG")
+          git fetch origin main "$TEST_BRANCH" || git fetch origin main
+          if git merge-base --is-ancestor "$COMMIT" origin/main; then
+            echo "REPO_FILE=repo.xml" >> "$GITHUB_ENV"
+            echo "PRERELEASE=" >> "$GITHUB_ENV"
+            echo "$TAG is on main: normal release"
+          elif git rev-parse --verify -q "origin/$TEST_BRANCH" >/dev/null \
+               && git merge-base --is-ancestor "$COMMIT" "origin/$TEST_BRANCH"; then
+            echo "REPO_FILE=repo-testing.xml" >> "$GITHUB_ENV"
+            echo "PRERELEASE=1" >> "$GITHUB_ENV"
+            echo "$TAG is on $TEST_BRANCH: pre-release"
+          else
+            echo "::error::Tag $TAG is not on main or $TEST_BRANCH. Push the branch before the tag."
+            exit 1
+          fi
+
       - name: Build plugin zip (AlbumMix/ folder at the top)
         run: |
           mkdir -p build/AlbumMix
@@ -67,9 +99,24 @@ jobs:
       - name: Attach zip to the GitHub release
         run: |
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$ZIPFILE" --repo "$REPO" --clobber
+            if gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' | grep -qx "$ZIPFILE"; then
+              # Already published: keep that exact zip (and its SHA) rather
+              # than replacing it with a rebuild that would have a new SHA
+              echo "$ZIPFILE is already on the release; reusing it"
+              echo "REUSED=1" >> "$GITHUB_ENV"
+            else
+              gh release upload "$TAG" "$ZIPFILE" --repo "$REPO"
+            fi
+            if [ -z "$PRERELEASE" ] && [ "$(gh release view "$TAG" --repo "$REPO" --json isPrerelease --jq .isPrerelease)" = "true" ]; then
+              echo "Promoting $TAG from pre-release to a normal release"
+              gh release edit "$TAG" --repo "$REPO" --prerelease=false --latest --title "$TAG"
+            fi
           else
-            gh release create "$TAG" "$ZIPFILE" --repo "$REPO" --title "$TAG" --generate-notes --latest
+            if [ -n "$PRERELEASE" ]; then
+              gh release create "$TAG" "$ZIPFILE" --repo "$REPO" --title "$TAG (testing)" --generate-notes --prerelease
+            else
+              gh release create "$TAG" "$ZIPFILE" --repo "$REPO" --title "$TAG" --generate-notes --latest
+            fi
           fi
 
       - name: Check the download URL works and the SHA matches
@@ -82,21 +129,30 @@ jobs:
             sleep 10
           done
           GOT=$(sha1sum check.zip | cut -d' ' -f1)
-          if [ "$GOT" != "$SHA" ]; then
+          if [ -n "$REUSED" ]; then
+            echo "SHA=$GOT" >> "$GITHUB_ENV"
+            echo "Using the published zip's SHA1: $GOT"
+          elif [ "$GOT" != "$SHA" ]; then
             echo "::error::Downloaded zip SHA $GOT does not match built SHA $SHA"
             exit 1
           fi
           echo "Download OK, SHA matches."
 
-      - name: Update repo.xml on main (only after the zip is live)
+      - name: Update repo.xml or repo-testing.xml on main (only after the zip is live)
         run: |
           git fetch origin main
           git checkout -B main origin/main
 
-          CURRENT=$(sed -n 's:.*<plugin name="AlbumMix" version="\([^"]*\)".*:\1:p' repo.xml | head -1)
+          # First testing release: start repo-testing.xml from repo.xml
+          if [ ! -f "$REPO_FILE" ]; then
+            sed 's/plugin repository</plugin repository (testing)</' repo.xml > "$REPO_FILE"
+            git add "$REPO_FILE"
+          fi
+
+          CURRENT=$(sed -n 's:.*<plugin name="AlbumMix" version="\([^"]*\)".*:\1:p' "$REPO_FILE" | head -1)
           NEWEST=$(printf '%s\n%s\n' "$CURRENT" "$VERSION" | sort -V | tail -1)
           if [ "$CURRENT" != "$VERSION" ] && [ "$NEWEST" = "$CURRENT" ]; then
-            echo "repo.xml already advertises newer version $CURRENT; not downgrading to $VERSION."
+            echo "$REPO_FILE already advertises newer version $CURRENT; not downgrading to $VERSION."
             exit 0
           fi
 
@@ -104,16 +160,16 @@ jobs:
             -e "s|(<plugin name=\"AlbumMix\" version=\")[^\"]*|\1$VERSION|" \
             -e "s|<url>[^<]*</url>|<url>$URL</url>|" \
             -e "s|<sha>[^<]*</sha>|<sha>$SHA</sha>|" \
-            repo.xml
-          git diff repo.xml
+            "$REPO_FILE"
+          git add "$REPO_FILE"
+          git diff --cached "$REPO_FILE"
 
-          if git diff --quiet repo.xml; then
-            echo "repo.xml already up to date."
+          if git diff --cached --quiet; then
+            echo "$REPO_FILE already up to date."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add repo.xml
-          git commit -m "repo.xml: publish $TAG (sha1 $SHA)"
+          git commit -m "$REPO_FILE: publish $TAG (sha1 $SHA)"
           git push origin main

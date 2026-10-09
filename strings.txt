@@ -32,7 +32,7 @@ PLUGIN_ALBUM_MIX_MAX_HISTORY
 	EN	Album History Size
 
 PLUGIN_ALBUM_MIX_MAX_HISTORY_DESC
-	EN	Maximum number of albums to remember per session to avoid repeats.
+	EN	Maximum number of albums remembered within one mix to avoid repeats (see also Don't Repeat Albums For).
 
 PLUGIN_ALBUM_MIX_PREFER_LOCAL
 	EN	Prefer Local Library
@@ -66,3 +66,48 @@ PLUGIN_ALBUM_MIX_STOPPED
 
 PLUGIN_ALBUM_MIX_SEED_TRACK
 	EN	Seed track: %s by %s
+
+PLUGIN_ALBUM_MIX_VARIETY
+	EN	Variety
+
+PLUGIN_ALBUM_MIX_VARIETY_DESC
+	EN	How many of the closest Last.fm matches to choose from at random (closer matches are still more likely). 1 always takes the closest match. Default is 10.
+
+PLUGIN_ALBUM_MIX_FILTER_COMPILATIONS
+	EN	Skip Compilations
+
+PLUGIN_ALBUM_MIX_FILTER_COMPILATIONS_DESC
+	EN	Don't queue greatest hits, best-of, collections, anthologies, soundtracks and similar albums. The album you start the mix from is always played.
+
+PLUGIN_ALBUM_MIX_FILTER_LIVE
+	EN	Skip Live Albums
+
+PLUGIN_ALBUM_MIX_FILTER_LIVE_DESC
+	EN	Don't queue live albums (e.g. "Live at ...", "In Concert", "Unplugged").
+
+PLUGIN_ALBUM_MIX_FILTER_SINGLES
+	EN	Skip Singles and EPs
+
+PLUGIN_ALBUM_MIX_FILTER_SINGLES_DESC
+	EN	Don't queue singles, EPs or remix releases, or albums with fewer tracks than the minimum below.
+
+PLUGIN_ALBUM_MIX_MIN_TRACKS
+	EN	Minimum Tracks per Album
+
+PLUGIN_ALBUM_MIX_MIN_TRACKS_DESC
+	EN	Albums with fewer tracks than this are treated as singles/EPs (only when Skip Singles and EPs is on, and only where the track count is known). 0 turns this off. Default is 5.
+
+PLUGIN_ALBUM_MIX_REPEAT_DAYS
+	EN	Don't Repeat Albums For (days)
+
+PLUGIN_ALBUM_MIX_REPEAT_DAYS_DESC
+	EN	An album queued by any mix, on any player, won't be queued again for this many days. Remembered across mixes and server restarts. 0 turns this off. Default is 30.
+
+PLUGIN_ALBUM_MIX_CLEAR_HISTORY
+	EN	Clear Saved History
+
+PLUGIN_ALBUM_MIX_CLEAR_HISTORY_DESC
+	EN	Tick and save to forget which albums have been played, so they can be queued again straight away.
+
+PLUGIN_ALBUM_MIX_ALBUMS_REMEMBERED
+	EN	Albums remembered

@@ -14,15 +14,20 @@ A [Lyrion Music Server](https://lyrion.org/) plugin that creates continuous, dis
 
 1. **Seed track** — a random track from the last queued album, between its second and second-to-last track (the first and last tracks are often intros, outros or hidden tracks). Tracks you add to the queue yourself after that album are not used.
 2. **Similar tracks** — Last.fm `track.getSimilar` returns up to 50 similar tracks, closest match first.
-3. **Album lookup** — for each similar track, Last.fm `track.getInfo` gives the album it belongs to.
-4. **Checks** — an album is skipped if:
+3. **Variety** — the closest few tracks (10 by default, see **Variety**) are shuffled so the same seed doesn't always lead to the same album. Closer matches are still more likely to come first.
+4. **Album lookup** — for each similar track in that order, Last.fm `track.getInfo` gives the album it belongs to.
+5. **Checks** — an album is skipped if:
    - it was already played in this mix
+   - it was queued by any mix in the last 30 days (see **Don't Repeat Albums For**)
    - its artist is on cooldown (see **Artist Cooldown**)
+   - its title marks it as a compilation, live album, single, EP or remix release (see the **Skip** settings)
    - it was already tried in this mix and couldn't be queued
    - Discovery Mode is on and the album is already in your local library
-5. **Queue** — the plugin looks for the album in your library and/or online service (see **Settings**). Online search results must match both the artist and the album title, so a different album by the same artist is never queued. Minor differences such as "(Deluxe Edition)" or "- 2011 Remaster" are ignored. If the album can't be found anywhere, the plugin moves on to the next candidate.
+6. **Queue** — the plugin looks for the album in your library and/or online service (see **Settings**). Search results must match both the artist and the album title, so a different album by the same artist is never queued. Differences such as "(Deluxe Edition)", "- 2011 Remaster", "Remastered", accents ("Björk"/"Bjork"), "&"/"and" and "Vol."/"Volume" are ignored. Releases with fewer tracks than **Minimum Tracks per Album** are passed over where the track count is known. If the album can't be found anywhere, the plugin moves on to the next candidate.
 
-If no similar track leads to an album that can be queued, the plugin falls back to artist similarity: Last.fm `artist.getSimilar` → `artist.getTopAlbums`, trying each artist's albums in turn with the same checks.
+If no similar track leads to an album that can be queued, the plugin falls back to artist similarity: Last.fm `artist.getSimilar` → `artist.getTopAlbums`. The closest artists are tried in a shuffled order (see **Variety**), and each artist's top albums in random order rather than most popular first, all with the same checks.
+
+The album you start the mix from is always played, whatever the filters say.
 
 Following the sound of specific songs tends to give more interesting and varied results than pure artist similarity.
 
@@ -73,8 +78,27 @@ LMS will then offer new versions automatically.
 | Prefer Local Library | On | Look in your local library first, then online services. Ignored when Discovery Mode is on |
 | Discovery Mode | Off | Only queue albums that are **not** in your local library, played from your online service. The album you start the mix from is always played |
 | Artist Cooldown | 5 | Number of albums that must be queued before the same artist can appear again. 0 turns it off |
-| Album History Size | 50 | Number of albums remembered per mix to avoid repeats |
+| Album History Size | 50 | Number of albums remembered within one mix to avoid repeats |
 | Queue Lookahead | 2 | Number of tracks left in the queue when the next album is looked up |
+| Variety | 10 | How many of the closest Last.fm matches to choose from at random (closer matches are more likely). 1 always takes the closest match |
+| Skip Compilations | On | Don't queue greatest hits, best-of, collections, anthologies, soundtracks, tributes and similar |
+| Skip Live Albums | On | Don't queue live albums ("Live at …", "In Concert", "Unplugged", …) |
+| Skip Singles and EPs | On | Don't queue singles, EPs or remix releases |
+| Minimum Tracks per Album | 5 | With Skip Singles and EPs on, releases with fewer tracks are skipped where the track count is known (library, TIDAL, Spotify). 0 turns it off |
+| Don't Repeat Albums For | 30 days | An album queued by any mix, on any player, isn't queued again for this many days. Remembered across mixes and server restarts. 0 turns it off |
+| Clear Saved History | — | Tick and save to forget which albums have been played. The settings page shows how many albums are remembered |
+
+The **Skip** filters work from album titles, so an album whose title doesn't say what it is (e.g. a live album called just "Stop Making Sense") can still get through, and once in a while a studio album whose title looks like one is skipped (e.g. "Live in Fear"). They are checked against both the title Last.fm gives and the title of the album actually found, so asking for "Rumours" can't end up queuing "Rumours (Live)".
+
+## Testing versions
+
+Test versions are published from the `Testing` branch as GitHub pre-releases. To try one, replace the repository URL in **Settings → Manage Plugins → Additional Repositories** with:
+
+```
+https://raw.githubusercontent.com/mattkoopmans/lms-albummix/main/repo-testing.xml
+```
+
+Switch back to the normal URL (`.../main/repo.xml`, see **Installation**) to return to normal releases. Use one URL or the other, not both.
 
 ## Stopping a mix
 
@@ -89,6 +113,15 @@ LMS will then offer new versions automatically.
 - Online services: TIDAL is tested. Spotify (via Spotty) is supported but untested. Qobuz and Deezer are not supported yet
 
 ## Changelog
+
+### 1.2
+- Skips compilations, live albums, singles, EPs and remix releases (each can be turned off), plus releases with too few tracks
+- Looser album name matching: ignores accents, more edition notes ("Remastered", "Super Deluxe Edition", "Legacy Edition"), "+"/"&"/"and", "Vol."/"Volume", "Pt."/"Part"
+- Library lookups compare titles loosely, so "Rumours (Remastered)" finds your copy of "Rumours", while "Led Zeppelin" no longer matches "Led Zeppelin II"
+- Online searches leave out bracketed notes from the album title, so more albums are found
+- "Rumours" and "Rumours (Super Deluxe)" now count as the same album in the history
+- Less predictable picks: chooses at random among the closest matches (Variety setting), and among an artist's top albums rather than always the most popular
+- Saved history: albums aren't repeated for 30 days across mixes, players and restarts (setting, with a button to clear it)
 
 ### 1.1.3
 - Discovery Mode now skips albums that are already in your local library
@@ -106,10 +139,17 @@ LMS will then offer new versions automatically.
 
 Releases are built by GitHub Actions (`.github/workflows/release.yml`):
 
-1. Update `<version>` in `install.xml` and the changelog above, then commit and push
+1. Update `<version>` in `install.xml` and the changelog above, then commit and push the branch
 2. Tag and push, e.g. `git tag v1.2.0 && git push origin v1.2.0`
 
-The workflow builds the zip, attaches it to the release, checks the download, and only then updates `repo.xml`. Don't edit the version, URL or SHA in `repo.xml` by hand.
+The workflow builds the zip, attaches it to the release, checks the download, and only then updates `repo.xml`:
+
+- a tag on a commit that is on `main` is a normal release and updates `repo.xml`
+- a tag on a commit that is only on `Testing` is a pre-release and updates `repo-testing.xml`
+
+Both files are on `main` (the workflow commits them there), so merging `Testing` into `main` never publishes a test version by accident. Push the branch before the tag, and pull before your next push to `main`. Don't edit the version, URL or SHA in either file by hand.
+
+To promote a tested version: merge `Testing` into `main` and push, then in the **Actions** tab run **Release** for the same tag. It reuses the zip you tested (same SHA), turns the pre-release into a normal release and updates `repo.xml`.
 
 ## Licence
 
