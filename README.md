@@ -114,7 +114,7 @@ Switch back to the normal URL (`.../main/repo.xml`, see **Installation**) to ret
 
 ## Changelog
 
-### 1.2 (testing)
+### 1.2
 - Skips compilations, live albums, singles, EPs and remix releases (each can be turned off), plus releases with too few tracks
 - Looser album name matching: ignores accents, more edition notes ("Remastered", "Super Deluxe Edition", "Legacy Edition"), "+"/"&"/"and", "Vol."/"Volume", "Pt."/"Part"
 - Library lookups compare titles loosely, so "Rumours (Remastered)" finds your copy of "Rumours", while "Led Zeppelin" no longer matches "Led Zeppelin II"
