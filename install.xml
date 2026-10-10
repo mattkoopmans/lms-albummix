@@ -3,11 +3,12 @@
   <name>PLUGIN_ALBUM_MIX</name>
   <module>Plugins::AlbumMix::Plugin</module>
   <category>playlists</category>
-  <version>1.9.4</version>
+  <version>1.9.5</version>
   <description>PLUGIN_ALBUM_MIX_DESC</description>
   <creator>Matt Koopmans</creator>
   <email>mattkoop@aurelian-group.com</email>
   <defaultState>enabled</defaultState>
+  <canConflictWithDSTM>1</canConflictWithDSTM>
   <targetApplication>
     <id>SqueezeCenter</id>
     <minVersion>8.0</minVersion>

@@ -8,6 +8,8 @@
 
 	<div class="prefDesc">[% "PLUGIN_ALBUM_MIX_DEFAULTS_NOTE" | string %]</div>
 
+	<div class="prefDesc">[% "PLUGIN_ALBUM_MIX_DSTM_NOTE" | string %]</div>
+
 	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_SOURCE" desc="PLUGIN_ALBUM_MIX_SOURCE_DESC" %]
 		<select class="stdedit" name="pref_source">
 			<option value="library_only" [% IF prefs.source == 'library_only' %]selected[% END %]>[% "PLUGIN_ALBUM_MIX_SOURCE_LIBRARY_ONLY" | string %]</option>

@@ -34,6 +34,8 @@ use constant LASTFM_BUDGET_SECS       => 30;   # no retry is started after this 
 use constant LASTFM_SAVE_DELAY_SECS   => 300;  # saved Last.fm answers are written to disk at most this often
 use constant ONLINE_SEARCH_TIMEOUT_SECS => 20; # an online service that doesn't answer in time is skipped
 use constant ALBUM_ARRIVAL_SECS       => 60;   # how long to wait for a queued online album to appear in the queue
+use constant DSTM_ALBUM_MIN_TRACKS    => 3;    # Don't Stop The Music: the queue ends with an album if its last this-many tracks share one
+use constant DSTM_SEED_TRACKS         => 5;    # Don't Stop The Music: otherwise the seed is one of the last this-many tracks
 use constant DEFAULT_VARIETY          => 10;   # pick at random among this many of the closest matches
 use constant DEFAULT_REPEAT_DAYS      => 30;   # don't queue an album again within this many days
 use constant DEFAULT_MIN_TRACKS       => 5;    # albums with fewer tracks count as singles/EPs
@@ -203,7 +205,21 @@ sub initPlugin {
 	return $class;
 }
 
+# After all plugins have started: offer Album Mix as a Don't Stop The Music
+# provider (chosen per player under Settings > Player > Don't Stop The Music)
+sub postinitPlugin {
+	return unless Slim::Utils::PluginManager->isEnabled('Slim::Plugin::DontStopTheMusic::Plugin');
+
+	eval {
+		require Slim::Plugin::DontStopTheMusic::Plugin;
+		Slim::Plugin::DontStopTheMusic::Plugin->registerHandler('PLUGIN_ALBUM_MIX', \&dontStopTheMusic);
+		1;
+	} or $log->warn("Album Mix: Could not register with Don't Stop The Music: $@");
+}
+
 sub shutdownPlugin {
+	eval { Slim::Plugin::DontStopTheMusic::Plugin->unregisterHandler('PLUGIN_ALBUM_MIX') }
+		if Slim::Plugin::DontStopTheMusic::Plugin->can('unregisterHandler');
 	Slim::Control::Request::unsubscribe(\&onPlaylistChange);
 	Slim::Control::Request::unsubscribe(\&onPlaylistReplaced);
 	_saveLastfmCache() if _lastfmCacheDirty();
@@ -350,8 +366,7 @@ sub _menuItem {
 sub _menuItems {
 	my ( $client, @items ) = @_;
 
-	my $state = $playerState{ $client->master->id };
-	if ( $state && $state->{active} ) {
+	if ( _mixRunning($client->master->id) ) {
 		push @items, _menuItem($client, 'PLUGIN_ALBUM_MIX_STOP', 'stop', undef, 'parent');
 	}
 
@@ -518,7 +533,12 @@ sub _startMix {
 # previous session for this player; callbacks still in flight from the old
 # session detect this via _isCurrent() and stop.
 sub _newState {
-	my ( $client, $artist, $album ) = @_;
+	my ( $client, $artist, $album, $dstm ) = @_;
+
+	# A Don't Stop The Music request still waiting for an answer gets one
+	if ( my $old = $playerState{ $client->id } ) {
+		_dstmFinish($old, [], $client);
+	}
 
 	my $state = $playerState{ $client->id } = {
 		active              => 1,
@@ -540,7 +560,14 @@ sub _newState {
 		seenFirstSong       => 0,
 		lookupId            => 0,    # increases with every lookup, so a timed-out one can't queue later
 		client              => $client,   # the (master) player: its settings apply to the whole sync group
+		dstm                => $dstm ? 1 : 0,   # only answers Don't Stop The Music: finds albums, doesn't queue them
 	};
+
+	if ( $dstm ) {
+		$state->{seedLoaded} = 1;
+		$state->{guardUntil} = 0;
+		return $state;
+	}
 
 	# If nothing of the mix has reached the queue after this long (Last.fm
 	# or an online service never answered), stop rather than waiting for ever
@@ -724,12 +751,34 @@ sub stopAlbumMix {
 	$client = $client->master;
 	my $clientId = $client->id;
 
-	if ( $playerState{$clientId} && $playerState{$clientId}->{active} ) {
-		$playerState{$clientId}->{active} = 0;
-		$log->info("Album Mix stopped for player $clientId");
+	my $state = $playerState{$clientId};
 
+	if ( $state && $state->{active} ) {
+		$state->{active} = 0;
+		_dstmFinish($state, [], $client);
+
+		# (Don't Stop The Music picks are not a mix the user started)
+		return if $state->{dstm};
+
+		$log->info("Album Mix stopped for player $clientId");
 		_showBriefly($client, cstring($client, 'PLUGIN_ALBUM_MIX_STOPPED'));
 	}
+}
+
+# Don't Stop The Music holds off while the user's own mix runs, unless that
+# mix has run out of albums (nothing similar found, no API key): then it is
+# the safety net again
+sub _mixHoldsOffDSTM {
+	my $clientId = shift;
+	return _mixRunning($clientId) && !$playerState{$clientId}->{gaveUp} ? 1 : 0;
+}
+
+# True while the user's own Album Mix runs on this player (not when Album
+# Mix only answers Don't Stop The Music)
+sub _mixRunning {
+	my $clientId = shift;
+	my $state = $playerState{$clientId};
+	return $state && $state->{active} && !$state->{dstm} ? 1 : 0;
 }
 
 # True if $state is still this player's active mix session. Async
@@ -740,6 +789,175 @@ sub _isCurrent {
 
 	my $current = $playerState{$clientId};
 	return $current && $state && $current == $state && $current->{active};
+}
+
+# ============================================================
+# Don't Stop The Music provider
+#
+# When a queue is about to end, Don't Stop The Music asks the provider
+# chosen for that player. Album Mix finds a similar album (with that
+# player's Album Mix settings: Source, filters, Variety, Artist Cooldown,
+# Saved History) and hands it back; Don't Stop The Music adds it.
+# Played albums and the artist cooldown are remembered from one request
+# to the next.
+# ============================================================
+
+# Don't Stop The Music asks for more: $callback->($client, \@urls)
+sub dontStopTheMusic {
+	my ( $client, $callback ) = @_;
+
+	$client = $client->master;
+	my $clientId = $client->id;
+
+	# Always answer exactly once, or Don't Stop The Music stays busy
+	my $answered = 0;
+	my $answer = sub {
+		my $urls = shift || [];
+		return if $answered++;
+		eval { $callback->($client, $urls); 1 }
+			or $log->error("Album Mix: Answering Don't Stop The Music failed: $@");
+	};
+
+	# The user's own mix looks after this queue (see disableDSTM)
+	return _answerQuietly($client, $answer) if _mixHoldsOffDSTM($clientId);
+
+	# Anything going wrong before the request is under way must still be answered
+	my $ok = eval { _dstmStart($client, $answer); 1 };
+	unless ( $ok ) {
+		$log->error("Album Mix: Don't Stop The Music request failed: $@");
+		$answer->([]);
+
+		# A lookup it may have started can't count any more
+		my $state = $playerState{$clientId};
+		$state->{lookupId}++ if $state && $state->{dstm};
+	}
+}
+
+sub _dstmStart {
+	my ( $client, $answer ) = @_;
+	my $clientId = $client->id;
+
+	unless ( $prefs->get('lastfm_api_key') ) {
+		$log->warn("Album Mix: No Last.fm API key configured, can't help Don't Stop The Music");
+		return $answer->([]);
+	}
+
+	my $seed = _dstmSeed($client);
+	unless ( $seed ) {
+		$log->info("Album Mix: Nothing in the queue to start from");
+		return $answer->([]);
+	}
+
+	# Keep the session (played albums, artist cooldown) from earlier picks
+	my $state = $playerState{$clientId};
+	$state = _newState($client, $seed->{artist}, $seed->{album}, 1)
+		unless $state && $state->{active} && $state->{dstm};
+
+	_dstmFinish($state, []);   # an earlier request still waiting
+	$state->{dstmAnswer} = $answer;
+	$state->{seedArtist} = $seed->{artist};
+	$state->{seedAlbum}  = $seed->{album};
+
+	# What was just played isn't picked again straight away (usually the
+	# album Album Mix picked last time, which is in the history already)
+	if ( $seed->{album} && !grep { $_ eq _historyKey($seed->{artist}, $seed->{album}) } @{ $state->{history} } ) {
+		_addToHistory($clientId, $seed->{artist}, $seed->{album});
+	}
+	my $artistKey = _nameKey($seed->{artist});
+	_addArtistToHistory($clientId, $seed->{artist})
+		unless @{ $state->{artist_history} } && $state->{artist_history}->[-1] eq $artistKey;
+
+	# Albums that couldn't be found are tried again on the next request (a
+	# service may have been down), as a new mix would
+	$state->{skipped} = {};
+
+	$log->info("Album Mix: Don't Stop The Music asks for more; starting from '$seed->{title}' by '$seed->{artist}'");
+
+	# If nothing has been found in time, answer anyway (Don't Stop The Music
+	# then plays something else), and don't let the late result count
+	Slim::Utils::Timers::setTimer(undef, time() + LOOKUP_TIMEOUT_SECS, sub {
+		return unless $state->{dstmAnswer} && $state->{dstmAnswer} == $answer;
+		$log->warn("Album Mix: No album found in time for Don't Stop The Music");
+		$state->{lookupId}++;
+		$state->{pendingLookup} = 0;
+		_dstmFinish($state, []);
+	});
+
+	_findNextAlbum($client, $clientId, { title => $seed->{title}, artist => $seed->{artist} });
+}
+
+# Hand the album found (or nothing) to a waiting Don't Stop The Music request.
+# With $client, the request was only cut short (the user started or stopped
+# a mix): see _answerQuietly.
+sub _dstmFinish {
+	my ( $state, $urls, $client ) = @_;
+	my $answer = $state && delete $state->{dstmAnswer};
+	return unless $answer;
+	return _answerQuietly($client, $answer) if $client;
+	$answer->($urls || []);
+}
+
+# Answer Don't Stop The Music with nothing, without it falling back to
+# Random Play: when it gets an empty answer it adds 'randomplay://' to the
+# queue, which is removed again here. (Don't Stop The Music must always be
+# answered, or it stays busy on that player.)
+sub _answerQuietly {
+	my ( $client, $answer ) = @_;
+
+	my $before = Slim::Player::Playlist::count($client);
+	$answer->([]);
+
+	for ( my $i = Slim::Player::Playlist::count($client) - 1; $i >= $before; $i-- ) {
+		my $url = _trackUrl( Slim::Player::Playlist::track($client, $i) ) // '';
+		next unless $url =~ /^randomplay:/;
+		$log->debug("Album Mix: Removing Don't Stop The Music's fallback $url");
+		$client->execute(['playlist', 'delete', $i]);
+	}
+}
+
+# Don't Stop The Music must not add music while the user's own Album Mix
+# runs on this player (Album Mix adds the next album itself). LMS asks
+# plugins marked canConflictWithDSTM in install.xml.
+sub disableDSTM {
+	my ( $class, $client ) = @_;
+	return 0 unless $client;
+	return _mixHoldsOffDSTM($client->master->id);
+}
+
+# The track to start from: if the queue ends with an album, a track from it
+# (as for Album Mix); otherwise, e.g. a playlist of different artists, one
+# of its last few tracks at random, so the pick follows the recent mood
+# rather than always the very last song. Returns { title, artist, album }.
+sub _dstmSeed {
+	my $client = shift;
+
+	my $count = Slim::Player::Playlist::count($client);
+	return unless $count;
+
+	my %info;
+	my $details = sub {
+		my $i = shift;
+		$info{$i} ||= _trackDetails($client, Slim::Player::Playlist::track($client, $i));
+	};
+
+	my $last  = $count - 1;
+	my $album = lc( $details->($last)->{album} || '' );
+	my $start = $last;
+	$start-- while $album && $start > 0 && lc( $details->($start - 1)->{album} || '' ) eq $album;
+
+	if ( $album && $last - $start + 1 >= DSTM_ALBUM_MIN_TRACKS ) {
+		my $t = $details->( _seedIndex($start, $last) );
+		return { title => $t->{title}, artist => $t->{artist}, album => $t->{album} }
+			if $t->{title} && $t->{artist};
+	}
+
+	my $from = $count - DSTM_SEED_TRACKS;
+	$from = 0 if $from < 0;
+	my @candidates = grep { $_->{title} && $_->{artist} } map { $details->($_) } $from .. $last;
+	return unless @candidates;
+
+	my $t = $candidates[ int(rand(@candidates)) ];
+	return { title => $t->{title}, artist => $t->{artist}, album => $t->{album} };
 }
 
 # ============================================================
@@ -755,6 +973,9 @@ sub onPlaylistChange {
 
 	my $state = $playerState{$clientId};
 	return unless $state && $state->{active};
+
+	# Don't Stop The Music decides itself when to ask for more
+	return if $state->{dstm};
 
 	# The first song of the mix has started: the seed album has finished
 	# loading, so end the start-up guard shortly after. (A song change
@@ -829,6 +1050,7 @@ sub onPlaylistReplaced {
 	$client = $client->master;
 	my $state = $playerState{$client->id};
 	return unless $state && $state->{active};
+	return if $state->{dstm};
 
 	if ( time() < $state->{guardUntil} ) {
 		$log->debug("Album Mix: Ignoring '" . $request->getRequestString . "' while the seed album loads");
@@ -875,6 +1097,7 @@ sub _findNextAlbum {
 		$log->warn("Album Mix: No Last.fm API key configured");
 		_showBriefly($client, cstring($client, 'PLUGIN_ALBUM_MIX_NO_API_KEY'));
 		$state->{pendingLookup} = 0;
+		$state->{gaveUp} = 1;
 		return;
 	}
 
@@ -1161,6 +1384,8 @@ sub _nothingFound {
 	my ( $client, $state ) = @_;
 
 	_showBriefly($client, cstring($client, 'PLUGIN_ALBUM_MIX_NO_SIMILAR'));
+	$state->{gaveUp} = 1;
+	_dstmFinish($state, []);
 	stopAlbumMix($client) if $state->{firstLoad};
 }
 
@@ -1288,8 +1513,10 @@ sub _queueCandidate {
 
 	my $via = _whyText($why);
 
-	# The first album of a mix that doesn't play its seed replaces the queue
-	my $cmd = $state->{firstLoad} ? 'load' : 'add';
+	# The first album of a mix that doesn't play its seed replaces the queue;
+	# for Don't Stop The Music the album is only found, and handed over
+	my $cmd = $state->{dstm} ? 'collect' : $state->{firstLoad} ? 'load' : 'add';
+	my @found;
 
 	$log->info("Album Mix: Trying '$album' by '$artist' ($via)");
 
@@ -1336,13 +1563,16 @@ sub _queueCandidate {
 		}
 
 		$state->{pendingLookup} = 0;
+		$state->{gaveUp}        = 0;
 
 		_showBriefly($client, _whyPopup($client, $album, $artist, $why));
+		_dstmFinish($state, \@found);
 	}, {
 		skipOwned => _pref($client, 'source') eq 'online_only' ? 1 : 0,
 		isWanted  => $isWanted,
 		minTracks => _minTracks($client),
 		checkType => 1,
+		collect   => \@found,
 	});
 }
 
@@ -1997,7 +2227,7 @@ sub _findAndPlayAlbum {
 	my $done = sub {
 		my ( $found, $reason, $title, $online ) = @_;
 
-		if ( $found && (my $state = $playerState{$clientId}) ) {
+		if ( $found && $cmd ne 'collect' && (my $state = $playerState{$clientId}) ) {
 			$state->{lastAlbumStartIndex} = $cmd eq 'load' ? 0 : $preCount;
 			$log->debug("Album Mix: Last album starts at playlist index $state->{lastAlbumStartIndex}");
 
@@ -2031,7 +2261,15 @@ sub _findAndPlayAlbum {
 
 	my $playLocal = sub {
 		$log->info("Album Mix: Found '$album' in local library (id: $localAlbumId)");
-		$client->execute(['playlistcontrol', "cmd:$cmd", "album_id:$localAlbumId"]);
+
+		if ( $cmd eq 'collect' ) {
+			my $urls = _localTrackUrls($localAlbumId);
+			return $done->(0, 'no playable tracks in the library') unless @$urls;
+			push @{ $opts->{collect} }, @$urls;
+		} else {
+			$client->execute(['playlistcontrol', "cmd:$cmd", "album_id:$localAlbumId"]);
+		}
+
 		$done->(1, undef, $localTitle);
 	};
 
@@ -2209,19 +2447,56 @@ sub _findLocalAlbum {
 	return;
 }
 
+# The track URLs of a library album, in album order
+sub _localTrackUrls {
+	my $albumId = shift;
+
+	# Only audio tracks (not e.g. cue sheet entries); older schemas without
+	# the audio column get all of them
+	for my $where ( "album = ? AND audio = 1", "album = ?" ) {
+		my $urls = eval {
+			my $sth = Slim::Schema->dbh->prepare_cached("SELECT url FROM tracks WHERE $where ORDER BY disc, tracknum, id");
+			$sth->execute($albumId);
+			my $u = [ grep { defined && length } map { $_->[0] } @{ $sth->fetchall_arrayref } ];
+			$sth->finish;
+			$u;
+		};
+		return $urls if $urls;
+	}
+
+	return [];
+}
+
+# Add an album found online to the queue ('load' replaces it), or for
+# Don't Stop The Music ('collect') only note its URL
+sub _sendAlbum {
+	my ( $client, $cmd, $url, $opts ) = @_;
+
+	if ( $cmd eq 'collect' ) {
+		push @{ $opts->{collect} }, $url;
+		return;
+	}
+
+	$client->execute([ 'playlist', $cmd eq 'load' ? 'play' : 'add', $url ]);
+}
+
 # Number of tracks in a library album, or undef if it can't be counted.
 sub _localTrackCount {
 	my $albumId = shift;
 
-	my $count = eval {
-		my $sth = Slim::Schema->dbh->prepare_cached("SELECT COUNT(*) FROM tracks WHERE album = ?");
-		$sth->execute($albumId);
-		my ($n) = $sth->fetchrow_array;
-		$sth->finish;
-		$n;
-	};
+	# Audio tracks only, as handed over (see _localTrackUrls)
+	for my $where ( "album = ? AND audio = 1", "album = ?" ) {
+		my $count = eval {
+			my $sth = Slim::Schema->dbh->prepare_cached("SELECT COUNT(*) FROM tracks WHERE $where");
+			$sth->execute($albumId);
+			my ($n) = $sth->fetchrow_array;
+			$sth->finish;
+			$n;
+		};
+		return $count if defined $count;
+	}
 
-	return $count;
+	return;
 }
 
 # Search the enabled online services in turn.
@@ -2366,11 +2641,7 @@ sub _searchSpotty {
 
 					if ( $match ) {
 						$log->info("Album Mix: Found on Spotify: $match->{name}");
-						$client->execute([
-							'playlist',
-							$cmd eq 'load' ? 'play' : 'add',
-							$match->{uri},
-						]);
+						_sendAlbum($client, $cmd, $match->{uri}, $opts);
 						$callback->(1, undef, $match->{name});
 						return;
 					}
@@ -2462,11 +2733,7 @@ sub _searchTidal {
 					if ( $match ) {
 						my $itemArtist = $match->{artist} || ($match->{artists} && $match->{artists}->[0]) || {};
 						$log->info("Album Mix: Found on TIDAL: $match->{title} by " . ($itemArtist->{name} || '?') . " (id: $match->{id})");
-						$client->execute([
-							'playlist',
-							$cmd eq 'load' ? 'play' : 'add',
-							"tidal://album:$match->{id}",
-						]);
+						_sendAlbum($client, $cmd, "tidal://album:$match->{id}", $opts);
 						$callback->(1, undef, $match->{title});
 						return;
 					}

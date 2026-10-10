@@ -1157,3 +1157,23 @@ PLUGIN_ALBUM_MIX_INCLUDE_SEED_DESC
 	RU	Если отмечено, сначала воспроизводится альбом, дорожка или исполнитель, с которого начинается микс. Если не отмечено, микс сразу начинается с первого похожего альбома. "Продолжить как Album Mix" всегда сохраняет то, что воспроизводится сейчас.
 	SV	När rutan är markerad spelas albumet, spåret eller artisten du startar en mix från först. När den inte är markerad börjar mixen direkt med det första liknande albumet. "Fortsätt som Album Mix" behåller alltid det som spelas.
 	ZH_CN	勾选后，将先播放混合播放的起始专辑、音轨或艺人。未勾选时，混合播放直接从第一张相似专辑开始。“以 Album Mix 继续”始终保留当前正在播放的内容。
+
+PLUGIN_ALBUM_MIX_DSTM_NOTE
+	CS	Tato nastavení se používají také tehdy, když je Album Mix vybrán v modulu „Nezastavuj přehrávání hudby“: po skončení seznamu skladeb přidá podobné album.
+	DA	Disse indstillinger bruges også, når Album Mix er valgt under »Aldrig stop musikken«: når en afspilningsliste slutter, tilføjes et lignende album.
+	DE	Diese Einstellungen gelten auch, wenn Album Mix unter "Musikwiedergabe nie anhalten" ausgewählt ist: Geht eine Wiedergabeliste zu Ende, wird ein ähnliches Album angehängt.
+	EN	These settings are also used when Album Mix is chosen under Don't Stop The Music: when a playlist ends, a similar album is added.
+	ES	Estos ajustes también se usan cuando Album Mix está seleccionado en Don't Stop The Music: al terminar una lista de reproducción, se añade un álbum similar.
+	FI	Näitä asetuksia käytetään myös, kun Album Mix on valittu Don't Stop The Music -kohdassa: kun soittoluettelo päättyy, siihen lisätään samankaltainen levy.
+	FR	Ces réglages sont aussi utilisés lorsqu'Album Mix est choisi dans « N'arrêtez pas la musique » : à la fin d'une liste de lecture, un album similaire est ajouté.
+	HE	הגדרות אלה משמשות גם כאשר Album Mix נבחר ב-Don't Stop The Music: כשרשימת השמעה מסתיימת, נוסף אלבום דומה.
+	HU	Ezek a beállítások akkor is érvényesek, ha az Album Mix van kiválasztva a "Ne hagyja abba a zenét" funkcióban: egy műsorlista végén egy hasonló albumot ad hozzá.
+	IT	Queste impostazioni vengono usate anche quando Album Mix è selezionato in Don't Stop The Music: al termine di una playlist viene aggiunto un album simile.
+	JA	これらのセッティングは、Don't Stop The Music で Album Mix を選択した場合にも使われます。プレイリストが終わると、似たアルバムが追加されます。
+	NL	Deze instellingen worden ook gebruikt als Album Mix is gekozen bij Don't Stop The Music: als een afspeellijst afloopt, wordt een vergelijkbaar album toegevoegd.
+	NO	Disse innstillingene brukes også når Album Mix er valgt under «Ikke stopp musikken»: når en spilleliste er slutt, legges et lignende album til.
+	PL	Te ustawienia są używane również wtedy, gdy Album Mix jest wybrany w Don't Stop The Music: po zakończeniu listy odtwarzania dodawany jest podobny album.
+	PT	Estas configurações também são usadas quando o Album Mix é selecionado em Don't Stop The Music: quando uma lista de reprodução termina, é adicionado um álbum semelhante.
+	RU	Эти настройки также используются, когда Album Mix выбран в Don't Stop The Music: по окончании плей-листа добавляется похожий альбом.
+	SV	Dessa inställningar används också när Album Mix är valt under ”Stoppa inte musiken”: när en spellista tar slut läggs ett liknande album till.
+	ZH_CN	在 Don't Stop The Music 中选择 Album Mix 时，也使用这些设置：播放表结束时，会添加一张相似的专辑。

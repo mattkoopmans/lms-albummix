@@ -36,6 +36,17 @@ The album you start the mix from is always played, whatever the filters say.
 
 Following the sound of specific songs tends to give more interesting and varied results than pure artist similarity.
 
+## Don't Stop The Music
+
+Album Mix can also be the provider for LMS's built-in **Don't Stop The Music**, which adds more music when a queue is about to end. Choose **Album Mix** for a player under *Settings > Player > Don't Stop The Music*.
+
+- When the queue is nearly done (about 2 tracks left), Album Mix finds a similar album the same way as above and hands it to Don't Stop The Music, which adds it to the queue
+- The player's Album Mix settings are used: **Source**, the **Skip** filters, **Minimum Tracks per Album**, **Variety**, **Artist Cooldown** and the saved history (**Don't Repeat Albums For**)
+- It starts from the end of the queue: if that is an album, a random track from it (as above); if it is a playlist of different artists, one of its last 5 tracks at random, so the pick follows what was playing recently
+- Albums already picked and the artist cooldown are remembered from one pick to the next
+- If nothing suitable is found (for example with **Source** "Library only" and a small library), Don't Stop The Music plays something else instead, as it does for any provider
+- While an Album Mix you started yourself is running on a player, Don't Stop The Music holds off there; Album Mix adds the next album itself
+
 ## Requirements
 
 - Lyrion Music Server 8.0+
@@ -126,6 +137,12 @@ Switch back to the normal URL (`.../main/repo.xml`, see **Installation**) to ret
 - Online services: TIDAL is tested. Spotify (via Spotty) is supported but untested. Qobuz and Deezer are not supported yet
 
 ## Changelog
+
+### 1.9.5 (development build towards 2.0)
+- Album Mix can be the provider for Don't Stop The Music (see **Don't Stop The Music**), using each player's Album Mix settings
+- For a queue that ends with a playlist of different artists, it starts from one of the last 5 tracks at random
+- Don't Stop The Music holds off on a player while your own Album Mix runs there
+- The settings pages say that the settings also apply to Don't Stop The Music (translated)
 
 ### 1.9.4 (development build towards 2.0)
 - Translated into every language LMS itself supports (Czech, Danish, Dutch, Finnish, French, German, Hebrew, Hungarian, Italian, Japanese, Norwegian, Polish, Portuguese, Russian, Simplified Chinese, Spanish and Swedish), using LMS's own words for its menus. Corrections from native speakers are welcome
