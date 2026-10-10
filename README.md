@@ -121,6 +121,9 @@ Switch back to the normal URL (`.../main/repo.xml`, see **Installation**) to ret
 
 ## Changelog
 
+### 1.9.1 (development build towards 2.0)
+- Fixed: the Source choices showed no names in the settings pages (seen in Material Skin)
+
 ### 1.9.0 (development build towards 2.0)
 - Per-player settings: each player can use its own Source, Skip filters, Minimum Tracks, Variety, Artist Cooldown and Queue Lookahead, or the server defaults. Synced players use the main player's settings
 - New **Source** setting (Library only / Library first / Online first / Online only) replaces Prefer Local Library and Discovery Mode; set automatically from them when upgrading

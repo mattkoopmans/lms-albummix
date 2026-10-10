@@ -1,5 +1,4 @@
 [% PROCESS settings/header.html %]
-[% PROCESS plugins/AlbumMix/settings/source_select.html %]
 
 	<div class="prefDesc">[% "PLUGIN_ALBUM_MIX_DESC" | string %]</div>
 
@@ -10,7 +9,12 @@
 	<div class="prefDesc">[% "PLUGIN_ALBUM_MIX_DEFAULTS_NOTE" | string %]</div>
 
 	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_SOURCE" desc="PLUGIN_ALBUM_MIX_SOURCE_DESC" %]
-		[% PROCESS albummix_source_select %]
+		<select class="stdedit" name="pref_source">
+			<option value="library_only" [% IF prefs.source == 'library_only' %]selected[% END %]>[% "PLUGIN_ALBUM_MIX_SOURCE_LIBRARY_ONLY" | string %]</option>
+			<option value="library_first" [% IF prefs.source == 'library_first' %]selected[% END %]>[% "PLUGIN_ALBUM_MIX_SOURCE_LIBRARY_FIRST" | string %]</option>
+			<option value="online_first" [% IF prefs.source == 'online_first' %]selected[% END %]>[% "PLUGIN_ALBUM_MIX_SOURCE_ONLINE_FIRST" | string %]</option>
+			<option value="online_only" [% IF prefs.source == 'online_only' %]selected[% END %]>[% "PLUGIN_ALBUM_MIX_SOURCE_ONLINE_ONLY" | string %]</option>
+		</select>
 	[% END %]
 
 	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_ARTIST_COOLDOWN" desc="PLUGIN_ALBUM_MIX_ARTIST_COOLDOWN_DESC" %]
