@@ -1,173 +1,1159 @@
 PLUGIN_ALBUM_MIX
+	CS	Album Mix
+	DA	Album Mix
+	DE	Album Mix
 	EN	Album Mix
+	ES	Album Mix
+	FI	Album Mix
+	FR	Album Mix
+	HE	Album Mix
+	HU	Album Mix
+	IT	Album Mix
+	JA	Album Mix
+	NL	Album Mix
+	NO	Album Mix
+	PL	Album Mix
+	PT	Album Mix
+	RU	Album Mix
+	SV	Album Mix
+	ZH_CN	Album Mix
 
 PLUGIN_ALBUM_MIX_DESC
+	CS	Vytváří nepřetržitý mix založený na albech, počínaje výchozím albem, s využitím podobnosti z Last.fm.
+	DA	Laver et løbende albumbaseret mix ud fra et startalbum ved hjælp af lighed fra Last.fm.
+	DE	Erstellt ausgehend von einem Startalbum einen fortlaufenden albumbasierten Mix anhand der Ähnlichkeitsdaten von Last.fm.
 	EN	Creates a continuous album-based mix from a seed album using Last.fm similarity.
+	ES	Crea una mezcla continua de álbumes a partir de un álbum inicial, usando la similitud de Last.fm.
+	FI	Luo jatkuvan levypohjaisen miksauksen aloituslevystä Last.fm:n samankaltaisuustietojen avulla.
+	FR	Crée un mix continu d'albums à partir d'un album de départ, grâce aux similarités Last.fm.
+	HE	יוצר מיקס רציף מבוסס אלבומים מאלבום פתיחה, על סמך הדמיון של Last.fm.
+	HU	Folyamatos, albumokra épülő mixet hoz létre egy kiinduló albumból a Last.fm hasonlósági adatai alapján.
+	IT	Crea un mix continuo di album a partire da un album iniziale, usando la somiglianza di Last.fm.
+	JA	Last.fm の類似度を使い、起点アルバムからアルバム単位の連続ミックスを作成します。
+	NL	Maakt vanuit een startalbum een doorlopende mix op basis van albums, met behulp van overeenkomsten van Last.fm.
+	NO	Lager en sammenhengende albumbasert miks ut fra et startalbum ved hjelp av likhet fra Last.fm.
+	PL	Tworzy ciągły miks oparty na albumach, zaczynając od albumu początkowego i korzystając z podobieństwa w Last.fm.
+	PT	Cria um mix contínuo de álbuns a partir de um álbum inicial, usando a semelhança do Last.fm.
+	RU	Создаёт непрерывный микс из альбомов на основе исходного альбома, используя данные о сходстве Last.fm.
+	SV	Skapar en kontinuerlig albumbaserad mix utifrån ett startalbum med hjälp av likheter från Last.fm.
+	ZH_CN	根据起始专辑，利用 Last.fm 相似度生成连续的专辑混合播放。
 
 PLUGIN_ALBUM_MIX_CREATE
+	CS	Vytvořit Album Mix
+	DA	Opret Album Mix
+	DE	Album Mix erstellen
 	EN	Create Album Mix
+	ES	Crear Album Mix
+	FI	Luo Album Mix
+	FR	Créer un Album Mix
+	HE	צור Album Mix
+	HU	Album Mix létrehozása
+	IT	Crea Album Mix
+	JA	Album Mix を作成
+	NL	Album Mix maken
+	NO	Lag Album Mix
+	PL	Utwórz Album Mix
+	PT	Criar Album Mix
+	RU	Создать Album Mix
+	SV	Skapa Album Mix
+	ZH_CN	创建 Album Mix
 
 PLUGIN_ALBUM_MIX_CREATING
+	CS	Vytváří se Album Mix…
+	DA	Opretter Album Mix...
+	DE	Album Mix wird erstellt...
 	EN	Creating Album Mix...
+	ES	Creando Album Mix...
+	FI	Luodaan Album Mix…
+	FR	Création de l'Album Mix...
+	HE	יוצר Album Mix...
+	HU	Album Mix létrehozása…
+	IT	Creazione Album Mix in corso...
+	JA	Album Mix を作成中...
+	NL	Album Mix wordt gemaakt...
+	NO	Lager Album Mix...
+	PL	Tworzenie Album Mix…
+	PT	A criar Album Mix...
+	RU	Создание Album Mix…
+	SV	Skapar Album Mix...
+	ZH_CN	正在创建 Album Mix…
 
 PLUGIN_ALBUM_MIX_STARTED
+	CS	Album Mix spuštěn
+	DA	Album Mix er startet
+	DE	Album Mix gestartet
 	EN	Album Mix started
+	ES	Album Mix iniciado
+	FI	Album Mix käynnistetty
+	FR	Album Mix démarré
+	HE	Album Mix הופעל
+	HU	Album Mix elindítva
+	IT	Album Mix avviato
+	JA	Album Mix を開始しました
+	NL	Album Mix gestart
+	NO	Album Mix er startet
+	PL	Uruchomiono Album Mix
+	PT	Album Mix iniciado
+	RU	Album Mix запущен
+	SV	Album Mix har startat
+	ZH_CN	Album Mix 已开始
 
 PLUGIN_ALBUM_MIX_QUEUED
+	CS	Přidáno podobné album: %s
+	DA	Lignende album tilføjet: %s
+	DE	Ähnliches Album hinzugefügt: %s
 	EN	Queued similar album: %s
+	ES	Álbum similar añadido: %s
+	FI	Lisätty samankaltainen levy: %s
+	FR	Album similaire ajouté : %s
+	HE	נוסף אלבום דומה: %s
+	HU	Hasonló album sorba állítva: %s
+	IT	Album simile aggiunto: %s
+	JA	類似アルバムを追加しました：%s
+	NL	Vergelijkbaar album toegevoegd: %s
+	NO	Lignende album lagt til: %s
+	PL	Dodano podobny album: %s
+	PT	Álbum semelhante adicionado: %s
+	RU	Добавлен похожий альбом: %s
+	SV	Liknande album tillagt: %s
+	ZH_CN	已加入相似专辑：%s
 
 PLUGIN_ALBUM_MIX_NO_SIMILAR
+	CS	Nebyla nalezena žádná podobná alba
+	DA	Ingen lignende album fundet
+	DE	Keine ähnlichen Alben gefunden
 	EN	No similar albums found
+	ES	No se encontraron álbumes similares
+	FI	Samankaltaisia levyjä ei löytynyt
+	FR	Aucun album similaire trouvé
+	HE	לא נמצאו אלבומים דומים
+	HU	Nem található hasonló album
+	IT	Nessun album simile trovato
+	JA	類似アルバムが見つかりません
+	NL	Geen vergelijkbare albums gevonden
+	NO	Fant ingen lignende album
+	PL	Nie znaleziono podobnych albumów
+	PT	Nenhum álbum semelhante encontrado
+	RU	Похожие альбомы не найдены
+	SV	Inga liknande album hittades
+	ZH_CN	未找到相似专辑
 
 PLUGIN_ALBUM_MIX_SETTINGS
+	CS	Nastavení Album Mix
+	DA	Indstillinger for Album Mix
+	DE	Einstellungen für Album Mix
 	EN	Album Mix Settings
+	ES	Configuración de Album Mix
+	FI	Album Mix -asetukset
+	FR	Réglages d'Album Mix
+	HE	הגדרות Album Mix
+	HU	Album Mix beállításai
+	IT	Impostazioni Album Mix
+	JA	Album Mix セッティング
+	NL	Album Mix-instellingen
+	NO	Innstillinger for Album Mix
+	PL	Ustawienia Album Mix
+	PT	Configurações do Album Mix
+	RU	Настройки Album Mix
+	SV	Inställningar för Album Mix
+	ZH_CN	Album Mix 设置
 
 PLUGIN_ALBUM_MIX_LASTFM_API_KEY
+	CS	Klíč API Last.fm
+	DA	Last.fm-API-nøgle
+	DE	Last.fm-API-Schlüssel
 	EN	Last.fm API Key
+	ES	Clave de API de Last.fm
+	FI	Last.fm API -avain
+	FR	Clé API Last.fm
+	HE	מפתח API של Last.fm
+	HU	Last.fm API-kulcs
+	IT	Chiave API Last.fm
+	JA	Last.fm API キー
+	NL	Last.fm-API-sleutel
+	NO	Last.fm-API-nøkkel
+	PL	Klucz API Last.fm
+	PT	Chave da API do Last.fm
+	RU	Ключ API Last.fm
+	SV	Last.fm-API-nyckel
+	ZH_CN	Last.fm API 密钥
 
 PLUGIN_ALBUM_MIX_LASTFM_API_KEY_DESC
+	CS	Zadejte svůj klíč API Last.fm. Zdarma ho získáte na https://www.last.fm/api/account/create
+	DA	Angiv din Last.fm-API-nøgle. Få en gratis på https://www.last.fm/api/account/create
+	DE	Geben Sie Ihren Last.fm-API-Schlüssel ein. Einen kostenlosen Schlüssel erhalten Sie unter https://www.last.fm/api/account/create
 	EN	Enter your Last.fm API key. Get one free at https://www.last.fm/api/account/create
+	ES	Introduzca su clave de API de Last.fm. Puede obtener una gratis en https://www.last.fm/api/account/create
+	FI	Anna Last.fm API -avaimesi. Saat sellaisen maksutta osoitteesta https://www.last.fm/api/account/create
+	FR	Saisissez votre clé API Last.fm. Obtenez-en une gratuitement sur https://www.last.fm/api/account/create
+	HE	הזן את מפתח ה-API שלך ב-Last.fm. ניתן לקבל מפתח בחינם בכתובת https://www.last.fm/api/account/create
+	HU	Adja meg a Last.fm API-kulcsát. Ingyenesen igényelhet egyet itt: https://www.last.fm/api/account/create
+	IT	Inserire la chiave API Last.fm. Se ne può ottenere una gratuitamente su https://www.last.fm/api/account/create
+	JA	Last.fm の API キーを入力してください。https://www.last.fm/api/account/create で無料で取得できます。
+	NL	Voer je Last.fm-API-sleutel in. Vraag er gratis een aan op https://www.last.fm/api/account/create
+	NO	Skriv inn Last.fm-API-nøkkelen din. Få en gratis på https://www.last.fm/api/account/create
+	PL	Wprowadź swój klucz API Last.fm. Możesz go uzyskać bezpłatnie na https://www.last.fm/api/account/create
+	PT	Introduza a sua chave da API do Last.fm. Obtenha uma gratuitamente em https://www.last.fm/api/account/create
+	RU	Введите ваш ключ API Last.fm. Получить его бесплатно можно на https://www.last.fm/api/account/create
+	SV	Ange din Last.fm-API-nyckel. Skaffa en gratis på https://www.last.fm/api/account/create
+	ZH_CN	请输入您的 Last.fm API 密钥。可在 https://www.last.fm/api/account/create 免费获取。
 
 PLUGIN_ALBUM_MIX_MAX_HISTORY
+	CS	Velikost historie alb
+	DA	Størrelse på albumhistorik
+	DE	Größe des Albumverlaufs
 	EN	Album History Size
+	ES	Tamaño del historial de álbumes
+	FI	Levyhistorian koko
+	FR	Taille de l'historique des albums
+	HE	גודל היסטוריית האלבומים
+	HU	Albumelőzmények mérete
+	IT	Dimensione cronologia album
+	JA	アルバム履歴のサイズ
+	NL	Grootte albumgeschiedenis
+	NO	Størrelse på albumhistorikk
+	PL	Rozmiar historii albumów
+	PT	Tamanho do histórico de álbuns
+	RU	Размер истории альбомов
+	SV	Storlek på albumhistorik
+	ZH_CN	专辑历史记录数量
 
 PLUGIN_ALBUM_MIX_MAX_HISTORY_DESC
+	CS	Maximální počet alb, která si jeden mix pamatuje, aby se neopakovala (viz také Neopakovat alba po dobu).
+	DA	Maksimalt antal album, der huskes inden for ét mix for at undgå gentagelser (se også "Gentag ikke album i").
+	DE	Maximale Anzahl der Alben, die innerhalb eines Mixes gespeichert werden, um Wiederholungen zu vermeiden (siehe auch "Alben nicht wiederholen für").
 	EN	Maximum number of albums remembered within one mix to avoid repeats (see also Don't Repeat Albums For).
+	ES	Número máximo de álbumes que se recuerdan dentro de una mezcla para evitar repeticiones (véase también "No repetir álbumes durante").
+	FI	Yhden miksauksen aikana muistettavien levyjen enimmäismäärä toistojen välttämiseksi (katso myös Älä toista levyjä uudelleen).
+	FR	Nombre maximal d'albums mémorisés au sein d'un même mix pour éviter les répétitions (voir aussi "Ne pas répéter les albums pendant").
+	HE	המספר המרבי של אלבומים שנשמרים בזיכרון במהלך מיקס אחד כדי למנוע חזרות (ראה גם "אל תחזור על אלבומים במשך").
+	HU	Az egy mixen belül megjegyzett albumok maximális száma az ismétlések elkerülésére (lásd még: Albumok ismétlési tilalma).
+	IT	Numero massimo di album memorizzati all'interno di un mix per evitare ripetizioni (vedere anche "Non ripetere gli album per").
+	JA	重複を避けるため、1つのミックス内で記憶するアルバムの最大数です（「アルバムを繰り返さない期間」も参照）。
+	NL	Maximaal aantal albums dat binnen één mix wordt onthouden om herhalingen te voorkomen (zie ook "Albums niet herhalen gedurende").
+	NO	Maksimalt antall album som huskes innenfor én miks for å unngå gjentakelser (se også "Ikke gjenta album i").
+	PL	Maksymalna liczba albumów zapamiętywanych w ramach jednego miksu, aby uniknąć powtórzeń (zobacz też Nie powtarzaj albumów przez).
+	PT	Número máximo de álbuns memorizados num mesmo mix para evitar repetições (ver também "Não repetir álbuns durante").
+	RU	Максимальное число альбомов, запоминаемых в рамках одного микса, чтобы избежать повторов (см. также "Не повторять альбомы").
+	SV	Högsta antal album som sparas inom en mix för att undvika upprepningar (se även "Upprepa inte album under").
+	ZH_CN	一个混合播放中记住的最大专辑数，用于避免重复（另请参阅“专辑不重复天数”）。
 
 PLUGIN_ALBUM_MIX_ARTIST_COOLDOWN
+	CS	Prodleva interpreta (alba)
+	DA	Pause for kunstner (album)
+	DE	Wartezeit für Interpreten (Alben)
 	EN	Artist Cooldown (albums)
+	ES	Espera para repetir artista (álbumes)
+	FI	Artistin odotusaika (levyä)
+	FR	Délai avant de répéter un artiste (albums)
+	HE	זמן המתנה למבצע (אלבומים)
+	HU	Előadó várakozási ideje (album)
+	IT	Attesa prima di ripetere un artista (album)
+	JA	アーチストの待機期間（アルバム数）
+	NL	Wachttijd artiest (albums)
+	NO	Pause for artist (album)
+	PL	Przerwa dla wykonawcy (albumy)
+	PT	Intervalo para repetir artista (álbuns)
+	RU	Пауза для исполнителя (альбомов)
+	SV	Paus för artist (album)
+	ZH_CN	艺人冷却期（专辑数）
 
 PLUGIN_ALBUM_MIX_ARTIST_COOLDOWN_DESC
+	CS	Počet alb, která musí být přidána, než se může stejný interpret objevit znovu. 0 tuto funkci vypne. Výchozí hodnota je 5.
+	DA	Antal album, der skal tilføjes, før den samme kunstner kan komme igen. Angiv 0 for at slå fra. Standard er 5.
+	DE	Anzahl der Alben, die hinzugefügt werden müssen, bevor derselbe Interpret wieder erscheinen kann. 0 deaktiviert diese Funktion. Standard ist 5.
 	EN	Number of albums that must be queued before the same artist can appear again. Set to 0 to disable. Default is 5.
+	ES	Número de álbumes que deben añadirse antes de que el mismo artista pueda volver a aparecer. Ponga 0 para desactivarlo. El valor predeterminado es 5.
+	FI	Kuinka monta levyä on lisättävä ennen kuin sama artisti voi tulla uudelleen. 0 poistaa käytöstä. Oletus on 5.
+	FR	Nombre d'albums à ajouter avant que le même artiste puisse revenir. 0 pour désactiver. Valeur par défaut : 5.
+	HE	מספר האלבומים שיש להוסיף לרשימת ההשמעה לפני שאותו מבצע יוכל להופיע שוב. הגדר 0 כדי לבטל. ברירת המחדל היא 5.
+	HU	Ennyi albumot kell sorba állítani, mielőtt ugyanaz az előadó ismét szerepelhet. 0 esetén kikapcsolva. Alapértelmezés: 5.
+	IT	Numero di album da aggiungere prima che lo stesso artista possa ricomparire. Impostare 0 per disattivare. Il valore predefinito è 5.
+	JA	同じアーチストが再び登場するまでにプレイ リストに追加する必要があるアルバムの数です。0 にすると無効になります。デフォルトは 5 です。
+	NL	Aantal albums dat moet worden toegevoegd voordat dezelfde artiest weer kan terugkomen. Stel in op 0 om uit te schakelen. Standaard is 5.
+	NO	Antall album som må legges til før samme artist kan komme igjen. Sett til 0 for å slå av. Standard er 5.
+	PL	Liczba albumów, które muszą zostać dodane, zanim ten sam wykonawca może pojawić się ponownie. Ustaw 0, aby wyłączyć. Domyślnie 5.
+	PT	Número de álbuns a adicionar antes de o mesmo artista poder voltar a aparecer. Defina 0 para desativar. O valor predefinido é 5.
+	RU	Сколько альбомов должно быть добавлено, прежде чем тот же исполнитель сможет появиться снова. 0 — отключить. По умолчанию 5.
+	SV	Antal album som måste läggas till innan samma artist kan dyka upp igen. Ange 0 för att stänga av. Standard är 5.
+	ZH_CN	同一艺人再次出现之前必须加入播放表的专辑数。设为 0 可禁用。默认值为 5。
 
 PLUGIN_ALBUM_MIX_LOOKAHEAD
+	CS	Předstih fronty (skladby)
+	DA	Forudfyldning af afspilningsliste (numre)
+	DE	Vorlauf der Wiedergabeliste (Titel)
 	EN	Queue Lookahead (tracks)
+	ES	Margen de anticipación (pistas)
+	FI	Jonon ennakointi (raitaa)
+	FR	Marge d'anticipation (pistes)
+	HE	מילוי מראש של רשימת ההשמעה (רצועות)
+	HU	Előretekintés a sorban (zeneszám)
+	IT	Anticipo playlist (brani)
+	JA	プレイ リストの先読み（トラック数）
+	NL	Vooruitblik afspeellijst (nummers)
+	NO	Forhåndsfylling av spilleliste (spor)
+	PL	Wyprzedzenie kolejki (ścieżki)
+	PT	Antecipação da playlist (faixas)
+	RU	Упреждение очереди (дорожек)
+	SV	Förhandsfyllning av spellista (spår)
+	ZH_CN	播放表预读（音轨数）
 
 PLUGIN_ALBUM_MIX_LOOKAHEAD_DESC
+	CS	Další album se obvykle vyhledává v polovině posledního alba ve frontě. Toto nastavení určuje nejzazší okamžik: pokud do té doby vyhledávání nezačalo, spustí se, jakmile zbývá jen tolik skladeb.
+	DA	Det næste album slås normalt op halvvejs gennem det sidste album i afspilningslisten. Denne indstilling er det seneste tidspunkt: Hvis der ikke er startet et opslag inden da, starter det, når der kun er så mange numre tilbage.
+	DE	Das nächste Album wird normalerweise gesucht, wenn das letzte Album in der Wiedergabeliste zur Hälfte gespielt ist. Diese Einstellung legt den spätesten Zeitpunkt fest: Wurde bis dahin keine Suche gestartet, beginnt sie, sobald nur noch so viele Titel übrig sind.
 	EN	The next album is normally looked up halfway through the last album in the queue. This setting is the latest point: if no lookup has started by then, it starts when only this many tracks are left.
+	ES	Normalmente, el siguiente álbum se busca a mitad del último álbum de la lista de reproducción. Este ajuste es el momento límite: si para entonces no ha empezado ninguna búsqueda, se inicia cuando solo queda este número de pistas.
+	FI	Seuraava levy haetaan yleensä jonon viimeisen levyn puolivälissä. Tämä asetus määrää myöhäisimmän hetken: jos haku ei ole alkanut siihen mennessä, se alkaa, kun jäljellä on enää näin monta raitaa.
+	FR	Le prochain album est normalement recherché à mi-parcours du dernier album de la liste de lecture. Ce réglage fixe le moment limite : si aucune recherche n'a commencé d'ici là, elle démarre lorsqu'il ne reste plus que ce nombre de pistes.
+	HE	בדרך כלל האלבום הבא מאותר כשהאלבום האחרון ברשימת ההשמעה מגיע לאמצעו. הגדרה זו קובעת את הנקודה המאוחרת ביותר: אם החיפוש עדיין לא התחיל עד אז, הוא יתחיל כשיישאר רק מספר זה של רצועות.
+	HU	A következő album keresése általában a sor utolsó albumának felénél történik. Ez a beállítás a legkésőbbi időpontot adja meg: ha addig nem indult el keresés, az akkor indul el, amikor már csak ennyi zeneszám van hátra.
+	IT	Di solito l'album successivo viene cercato a metà dell'ultimo album della playlist. Questa impostazione indica il momento limite: se fino ad allora non è iniziata alcuna ricerca, la ricerca viene avviata quando resta solo questo numero di brani.
+	JA	通常、次のアルバムはプレイ リスト内の最後のアルバムが半分まで再生された時点で検索されます。この設定はその最も遅いタイミングです。それまでに検索が始まっていない場合は、残りのトラックがこの数になった時点で検索を開始します。
+	NL	Het volgende album wordt normaal gezocht halverwege het laatste album in de afspeellijst. Deze instelling bepaalt het laatste moment: als er tot dan nog niet is gezocht, begint het zoeken zodra er nog maar zoveel nummers over zijn.
+	NO	Neste album slås vanligvis opp halvveis i det siste albumet i spillelisten. Denne innstillingen er det seneste tidspunktet: Hvis ingen oppslag har startet innen da, starter det når bare så mange spor gjenstår.
+	PL	Następny album jest zwykle wyszukiwany w połowie ostatniego albumu w kolejce. To ustawienie określa najpóźniejszy moment: jeśli do tego czasu wyszukiwanie się nie rozpoczęło, rozpocznie się, gdy zostanie tylko tyle ścieżek.
+	PT	Normalmente, o álbum seguinte é procurado a meio do último álbum da playlist. Esta configuração é o limite: se nenhuma procura tiver começado até lá, começa quando restar apenas este número de faixas.
+	RU	Следующий альбом обычно ищется на середине последнего альбома в очереди. Этот параметр задаёт крайний момент: если поиск к тому времени не начался, он начнётся, когда останется столько дорожек.
+	SV	Nästa album söks normalt upp halvvägs genom det sista albumet i spellistan. Den här inställningen är den senaste tidpunkten: om ingen sökning har startat då, startar den när bara så här många spår är kvar.
+	ZH_CN	通常在播放表中最后一张专辑播放到一半时查找下一张专辑。此设置是最晚的时间点：如果届时尚未开始查找，则在仅剩此数量的音轨时开始查找。
 
 PLUGIN_ALBUM_MIX_STOP
+	CS	Zastavit Album Mix
+	DA	Stop Album Mix
+	DE	Album Mix stoppen
 	EN	Stop Album Mix
+	ES	Detener Album Mix
+	FI	Pysäytä Album Mix
+	FR	Arrêter Album Mix
+	HE	עצור את Album Mix
+	HU	Album Mix leállítása
+	IT	Arresta Album Mix
+	JA	Album Mix を停止
+	NL	Album Mix stoppen
+	NO	Stopp Album Mix
+	PL	Zatrzymaj Album Mix
+	PT	Parar Album Mix
+	RU	Остановить Album Mix
+	SV	Stoppa Album Mix
+	ZH_CN	停止 Album Mix
 
 PLUGIN_ALBUM_MIX_STOPPED
+	CS	Album Mix zastaven
+	DA	Album Mix er stoppet
+	DE	Album Mix gestoppt
 	EN	Album Mix stopped
+	ES	Album Mix detenido
+	FI	Album Mix pysäytetty
+	FR	Album Mix arrêté
+	HE	Album Mix נעצר
+	HU	Album Mix leállítva
+	IT	Album Mix arrestato
+	JA	Album Mix を停止しました
+	NL	Album Mix gestopt
+	NO	Album Mix er stoppet
+	PL	Zatrzymano Album Mix
+	PT	Album Mix parado
+	RU	Album Mix остановлен
+	SV	Album Mix har stoppats
+	ZH_CN	Album Mix 已停止
 
 PLUGIN_ALBUM_MIX_SEED_TRACK
+	CS	Výchozí skladba: %s, interpret: %s
+	DA	Startnummer: %s af %s
+	DE	Starttitel: %s von %s
 	EN	Seed track: %s by %s
+	ES	Pista inicial: %s de %s
+	FI	Aloitusraita: %s, artisti: %s
+	FR	Piste de départ : %s par %s
+	HE	רצועת פתיחה: %s מאת %s
+	HU	Kiinduló zeneszám: %s, előadó: %s
+	IT	Brano iniziale: %s di %s
+	JA	起点トラック：%s（%s）
+	NL	Startnummer: %s van %s
+	NO	Startspor: %s av %s
+	PL	Ścieżka początkowa: %s, wykonawca: %s
+	PT	Faixa inicial: %s de %s
+	RU	Исходная дорожка: %s, исполнитель: %s
+	SV	Startspår: %s av %s
+	ZH_CN	起始音轨：%s（%s）
 
 PLUGIN_ALBUM_MIX_VARIETY
+	CS	Pestrost
+	DA	Variation
+	DE	Vielfalt
 	EN	Variety
+	ES	Variedad
+	FI	Vaihtelevuus
+	FR	Variété
+	HE	מגוון
+	HU	Változatosság
+	IT	Varietà
+	JA	多様性
+	NL	Variatie
+	NO	Variasjon
+	PL	Różnorodność
+	PT	Variedade
+	RU	Разнообразие
+	SV	Variation
+	ZH_CN	多样性
 
 PLUGIN_ALBUM_MIX_VARIETY_DESC
+	CS	Z kolika nejbližších shod na Last.fm se má náhodně vybírat (bližší shody jsou stále pravděpodobnější). 1 vždy vybere nejbližší shodu. Výchozí hodnota je 10.
+	DA	Hvor mange af de nærmeste Last.fm-match der vælges tilfældigt imellem (nærmere match er stadig mere sandsynlige). 1 tager altid det nærmeste match. Standard er 10.
+	DE	Aus wie vielen der ähnlichsten Last.fm-Treffer zufällig gewählt wird (ähnlichere Treffer sind weiterhin wahrscheinlicher). Bei 1 wird immer der ähnlichste Treffer genommen. Standard ist 10.
 	EN	How many of the closest Last.fm matches to choose from at random (closer matches are still more likely). 1 always takes the closest match. Default is 10.
+	ES	Número de coincidencias más cercanas de Last.fm entre las que elegir al azar (las más cercanas siguen siendo más probables). Con 1 siempre se elige la más cercana. El valor predeterminado es 10.
+	FI	Kuinka monesta lähimmästä Last.fm-osumasta valitaan satunnaisesti (lähemmät osumat ovat silti todennäköisempiä). 1 valitsee aina lähimmän osuman. Oletus on 10.
+	FR	Nombre de correspondances Last.fm les plus proches parmi lesquelles choisir au hasard (les plus proches restent plus probables). Avec 1, la plus proche est toujours choisie. Valeur par défaut : 10.
+	HE	מתוך כמה מההתאמות הקרובות ביותר ב-Last.fm לבחור באקראי (להתאמות קרובות יותר עדיין יש סיכוי גבוה יותר). 1 בוחר תמיד את ההתאמה הקרובה ביותר. ברירת המחדל היא 10.
+	HU	A Last.fm legközelebbi találatai közül hányból történjen véletlenszerű választás (a közelebbi találatok továbbra is valószínűbbek). 1 esetén mindig a legközelebbi találat lesz kiválasztva. Alapértelmezés: 10.
+	IT	Numero delle corrispondenze Last.fm più vicine tra cui scegliere a caso (quelle più vicine restano più probabili). Con 1 viene sempre scelta la più vicina. Il valore predefinito è 10.
+	JA	Last.fm で最も近い候補のうち、上位いくつの中からランダムに選ぶかを指定します（近い候補ほど選ばれやすくなります）。1 にすると常に最も近い候補を選びます。デフォルトは 10 です。
+	NL	Uit hoeveel van de beste Last.fm-overeenkomsten willekeurig wordt gekozen (betere overeenkomsten blijven waarschijnlijker). Bij 1 wordt altijd de beste overeenkomst gekozen. Standaard is 10.
+	NO	Hvor mange av de nærmeste treffene fra Last.fm det velges tilfeldig blant (nærmere treff er fortsatt mer sannsynlige). 1 tar alltid det nærmeste treffet. Standard er 10.
+	PL	Spośród ilu najbliższych dopasowań z Last.fm losować (bliższe dopasowania nadal są bardziej prawdopodobne). 1 zawsze wybiera najbliższe dopasowanie. Domyślnie 10.
+	PT	Número das correspondências mais próximas do Last.fm entre as quais escolher ao acaso (as mais próximas continuam a ser mais prováveis). Com 1, é sempre escolhida a mais próxima. O valor predefinido é 10.
+	RU	Из скольких ближайших совпадений Last.fm выбирать случайным образом (более близкие совпадения по-прежнему вероятнее). 1 — всегда брать ближайшее совпадение. По умолчанию 10.
+	SV	Hur många av de närmaste träffarna från Last.fm som det väljs slumpmässigt bland (närmare träffar är fortfarande mer sannolika). 1 tar alltid den närmaste träffen. Standard är 10.
+	ZH_CN	从多少个最接近的 Last.fm 匹配结果中随机选择（越接近的匹配被选中的可能性仍越大）。设为 1 时始终选择最接近的匹配。默认值为 10。
 
 PLUGIN_ALBUM_MIX_FILTER_COMPILATIONS
+	CS	Přeskakovat sbírky
+	DA	Spring kompilationer over
+	DE	Kompilationen überspringen
 	EN	Skip Compilations
+	ES	Omitir compilaciones
+	FI	Ohita kokoelmat
+	FR	Ignorer les compilations
+	HE	דלג על אוספים
+	HU	Válogatások kihagyása
+	IT	Escludi compilation
+	JA	コンピレーションをスキップ
+	NL	Compilaties overslaan
+	NO	Hopp over samlinger
+	PL	Pomijaj kompilacje
+	PT	Ignorar compilações
+	RU	Пропускать сборники
+	SV	Hoppa över samlingar
+	ZH_CN	跳过合辑
 
 PLUGIN_ALBUM_MIX_FILTER_COMPILATIONS_DESC
+	CS	Nepřidávat výběry největších hitů, best-of, kolekce, antologie, soundtracky a podobná alba. Album, ze kterého mix spustíte, se přehraje vždy.
+	DA	Tilføj ikke greatest hits, best of, samlinger, antologier, soundtracks og lignende album. Det album, du starter mixet fra, afspilles altid.
+	DE	Keine Greatest-Hits- und Best-of-Alben, Sammlungen, Anthologien, Soundtracks und ähnlichen Alben hinzufügen. Das Album, mit dem Sie den Mix starten, wird immer gespielt.
 	EN	Don't queue greatest hits, best-of, collections, anthologies, soundtracks and similar albums. The album you start the mix from is always played.
+	ES	No añadir grandes éxitos, recopilatorios, colecciones, antologías, bandas sonoras ni álbumes de ese tipo. El álbum desde el que inicia la mezcla siempre se reproduce.
+	FI	Älä lisää hittikokoelmia, best-of-levyjä, kokoelmia, antologioita, soundtrackeja tai vastaavia levyjä. Levy, josta miksaus aloitetaan, soitetaan aina.
+	FR	Ne pas ajouter de best of, greatest hits, compilations, anthologies, bandes originales et autres albums de ce genre. L'album à partir duquel vous lancez le mix est toujours lu.
+	HE	אל תוסיף אלבומי להיטים, "הטוב ביותר", אוספים, אנתולוגיות, פסקולים ואלבומים דומים. האלבום שממנו מתחילים את המיקס מושמע תמיד.
+	HU	Ne kerüljenek sorba slágerválogatások, best-of, gyűjteményes és antológiaalbumok, filmzenék és hasonló albumok. Az album, amelyből a mixet indítja, mindig lejátszásra kerül.
+	IT	Non aggiungere greatest hits, best of, raccolte, antologie, colonne sonore e album di questo tipo. L'album da cui si avvia il mix viene sempre riprodotto.
+	JA	ベスト盤、ベスト・オブ、コレクション、アンソロジー、サウンドトラックなどのアルバムは追加しません。ミックスの起点アルバムは常に再生されます。
+	NL	Geen greatest hits, best-ofs, verzamelalbums, anthologieën, soundtracks en vergelijkbare albums toevoegen. Het album waarmee je de mix start, wordt altijd afgespeeld.
+	NO	Ikke legg til greatest hits, best of, samlinger, antologier, lydspor og lignende album. Albumet du starter miksen fra, spilles alltid.
+	PL	Nie dodawaj największych przebojów, składanek typu best-of, kolekcji, antologii, soundtracków i podobnych albumów. Album, od którego zaczynasz miks, jest zawsze odtwarzany.
+	PT	Não adicionar coletâneas de êxitos, best of, compilações, antologias, bandas sonoras e álbuns do género. O álbum a partir do qual inicia o mix é sempre reproduzido.
+	RU	Не добавлять сборники лучших хитов, best-of, коллекции, антологии, саундтреки и подобные альбомы. Альбом, с которого начинается микс, воспроизводится всегда.
+	SV	Lägg inte till greatest hits, best of, samlingar, antologier, soundtrack och liknande album. Albumet du startar mixen från spelas alltid.
+	ZH_CN	不加入精选集、最佳精选、合集、选集、原声带等类似专辑。混合播放的起始专辑始终会播放。
 
 PLUGIN_ALBUM_MIX_FILTER_LIVE
+	CS	Přeskakovat živá alba
+	DA	Spring livealbum over
+	DE	Live-Alben überspringen
 	EN	Skip Live Albums
+	ES	Omitir álbumes en directo
+	FI	Ohita livelevyt
+	FR	Ignorer les albums live
+	HE	דלג על אלבומי הופעות חיות
+	HU	Koncertalbumok kihagyása
+	IT	Escludi album live
+	JA	ライブアルバムをスキップ
+	NL	Livealbums overslaan
+	NO	Hopp over livealbum
+	PL	Pomijaj albumy koncertowe
+	PT	Ignorar álbuns ao vivo
+	RU	Пропускать концертные альбомы
+	SV	Hoppa över livealbum
+	ZH_CN	跳过现场专辑
 
 PLUGIN_ALBUM_MIX_FILTER_LIVE_DESC
+	CS	Nepřidávat živá alba (např. "Live at ...", "In Concert", "Unplugged").
+	DA	Tilføj ikke livealbum (f.eks. "Live at ...", "In Concert", "Unplugged").
+	DE	Keine Live-Alben hinzufügen (z. B. "Live at ...", "In Concert", "Unplugged").
 	EN	Don't queue live albums (e.g. "Live at ...", "In Concert", "Unplugged").
+	ES	No añadir álbumes en directo (p. ej., "Live at ...", "In Concert", "Unplugged").
+	FI	Älä lisää livelevyjä (esim. "Live at ...", "In Concert", "Unplugged").
+	FR	Ne pas ajouter d'albums live (par ex. "Live at ...", "In Concert", "Unplugged").
+	HE	אל תוסיף אלבומי הופעות חיות (למשל "Live at ...", "In Concert", "Unplugged").
+	HU	Ne kerüljenek sorba koncertalbumok (pl. "Live at ...", "In Concert", "Unplugged").
+	IT	Non aggiungere album live (ad es. "Live at ...", "In Concert", "Unplugged").
+	JA	ライブアルバム（例：「Live at ...」「In Concert」「Unplugged」）は追加しません。
+	NL	Geen livealbums toevoegen (bijv. "Live at ...", "In Concert", "Unplugged").
+	NO	Ikke legg til livealbum (f.eks. "Live at ...", "In Concert", "Unplugged").
+	PL	Nie dodawaj albumów koncertowych (np. "Live at ...", "In Concert", "Unplugged").
+	PT	Não adicionar álbuns ao vivo (p. ex. "Live at ...", "In Concert", "Unplugged").
+	RU	Не добавлять концертные альбомы (например, "Live at ...", "In Concert", "Unplugged").
+	SV	Lägg inte till livealbum (t.ex. "Live at ...", "In Concert", "Unplugged").
+	ZH_CN	不加入现场专辑（例如“Live at ...”、“In Concert”、“Unplugged”）。
 
 PLUGIN_ALBUM_MIX_FILTER_SINGLES
+	CS	Přeskakovat singly a EP
+	DA	Spring singler og EP'er over
+	DE	Singles und EPs überspringen
 	EN	Skip Singles and EPs
+	ES	Omitir sencillos y EP
+	FI	Ohita singlet ja EP:t
+	FR	Ignorer les singles et EP
+	HE	דלג על סינגלים ו-EP
+	HU	Kislemezek és EP-k kihagyása
+	IT	Escludi singoli ed EP
+	JA	シングルと EP をスキップ
+	NL	Singles en ep's overslaan
+	NO	Hopp over singler og EP-er
+	PL	Pomijaj single i EP
+	PT	Ignorar singles e EP
+	RU	Пропускать синглы и EP
+	SV	Hoppa över singlar och EP-skivor
+	ZH_CN	跳过单曲和 EP
 
 PLUGIN_ALBUM_MIX_FILTER_SINGLES_DESC
+	CS	Nepřidávat singly, EP ani remixová vydání, ani alba s menším počtem skladeb, než je níže uvedené minimum.
+	DA	Tilføj ikke singler, EP'er eller remixudgivelser eller album med færre numre end minimum nedenfor.
+	DE	Keine Singles, EPs oder Remix-Veröffentlichungen hinzufügen, ebenso keine Alben mit weniger Titeln als das unten angegebene Minimum.
 	EN	Don't queue singles, EPs or remix releases, or albums with fewer tracks than the minimum below.
+	ES	No añadir sencillos, EP ni lanzamientos de remezclas, ni álbumes con menos pistas que el mínimo indicado abajo.
+	FI	Älä lisää singlejä, EP:itä tai remix-julkaisuja äläkä levyjä, joilla on vähemmän raitoja kuin alla oleva vähimmäismäärä.
+	FR	Ne pas ajouter de singles, d'EP ni de sorties de remix, ni d'albums comptant moins de pistes que le minimum ci-dessous.
+	HE	אל תוסיף סינגלים, תקליטי EP או גרסאות רמיקס, או אלבומים עם פחות רצועות מהמינימום שלהלן.
+	HU	Ne kerüljenek sorba kislemezek, EP-k vagy remixkiadványok, illetve az alább megadott minimumnál kevesebb zeneszámot tartalmazó albumok.
+	IT	Non aggiungere singoli, EP o uscite di remix, né album con meno brani del minimo indicato sotto.
+	JA	シングル、EP、リミックス作品、および下記の最小トラック数より少ないアルバムは追加しません。
+	NL	Geen singles, ep's of remixuitgaven toevoegen, en ook geen albums met minder nummers dan het minimum hieronder.
+	NO	Ikke legg til singler, EP-er eller remiksutgivelser, eller album med færre spor enn minimum nedenfor.
+	PL	Nie dodawaj singli, EP ani wydań z remiksami, ani albumów z mniejszą liczbą ścieżek niż podane niżej minimum.
+	PT	Não adicionar singles, EP ou edições de remisturas, nem álbuns com menos faixas do que o mínimo indicado abaixo.
+	RU	Не добавлять синглы, EP, релизы ремиксов, а также альбомы, в которых меньше дорожек, чем указанный ниже минимум.
+	SV	Lägg inte till singlar, EP-skivor eller remixutgåvor, eller album med färre spår än minimiantalet nedan.
+	ZH_CN	不加入单曲、EP 或混音版，也不加入音轨数少于下方最小值的专辑。
 
 PLUGIN_ALBUM_MIX_MIN_TRACKS
+	CS	Minimální počet skladeb na album
+	DA	Mindste antal numre pr. album
+	DE	Mindestanzahl Titel pro Album
 	EN	Minimum Tracks per Album
+	ES	Mínimo de pistas por álbum
+	FI	Raitojen vähimmäismäärä levyllä
+	FR	Nombre minimal de pistes par album
+	HE	מספר רצועות מינימלי לאלבום
+	HU	Zeneszámok minimális száma albumonként
+	IT	Numero minimo di brani per album
+	JA	アルバムあたりの最小トラック数
+	NL	Minimum aantal nummers per album
+	NO	Minste antall spor per album
+	PL	Minimalna liczba ścieżek na album
+	PT	Mínimo de faixas por álbum
+	RU	Минимум дорожек в альбоме
+	SV	Minsta antal spår per album
+	ZH_CN	每张专辑最少音轨数
 
 PLUGIN_ALBUM_MIX_MIN_TRACKS_DESC
+	CS	Alba s menším počtem skladeb se považují za singly/EP (jen když je zapnuto Přeskakovat singly a EP a jen pokud je počet skladeb znám). 0 tuto funkci vypne. Výchozí hodnota je 5.
+	DA	Album med færre numre end dette behandles som singler/EP'er (kun når "Spring singler og EP'er over" er slået til, og kun hvor antallet af numre er kendt). 0 slår dette fra. Standard er 5.
+	DE	Alben mit weniger Titeln werden als Singles/EPs behandelt (nur wenn "Singles und EPs überspringen" aktiviert ist und nur, wenn die Titelanzahl bekannt ist). 0 deaktiviert dies. Standard ist 5.
 	EN	Albums with fewer tracks than this are treated as singles/EPs (only when Skip Singles and EPs is on, and only where the track count is known). 0 turns this off. Default is 5.
+	ES	Los álbumes con menos pistas que este número se tratan como sencillos/EP (solo si "Omitir sencillos y EP" está activado y solo cuando se conoce el número de pistas). 0 lo desactiva. El valor predeterminado es 5.
+	FI	Levyjä, joilla on tätä vähemmän raitoja, käsitellään singleinä/EP:inä (vain kun Ohita singlet ja EP:t on käytössä ja vain, jos raitojen määrä tiedetään). 0 poistaa käytöstä. Oletus on 5.
+	FR	Les albums comptant moins de pistes que ce nombre sont traités comme des singles/EP (uniquement si "Ignorer les singles et EP" est activé, et seulement lorsque le nombre de pistes est connu). 0 désactive ce réglage. Valeur par défaut : 5.
+	HE	אלבומים עם פחות רצועות מערך זה ייחשבו לסינגלים/EP (רק כאשר "דלג על סינגלים ו-EP" מופעל, ורק כאשר מספר הרצועות ידוע). 0 מבטל אפשרות זו. ברירת המחדל היא 5.
+	HU	Az ennél kevesebb zeneszámot tartalmazó albumok kislemeznek/EP-nek számítanak (csak ha a Kislemezek és EP-k kihagyása be van kapcsolva, és csak ha a zeneszámok száma ismert). 0 esetén kikapcsolva. Alapértelmezés: 5.
+	IT	Gli album con meno brani di questo numero sono trattati come singoli/EP (solo se "Escludi singoli ed EP" è attivo e solo quando il numero di brani è noto). 0 disattiva questa opzione. Il valore predefinito è 5.
+	JA	トラック数がこの値より少ないアルバムはシングル/EP として扱われます（「シングルと EP をスキップ」がオンで、トラック数がわかる場合のみ）。0 にするとオフになります。デフォルトは 5 です。
+	NL	Albums met minder nummers dan dit worden als singles/ep's behandeld (alleen als "Singles en ep's overslaan" aan staat, en alleen als het aantal nummers bekend is). 0 schakelt dit uit. Standaard is 5.
+	NO	Album med færre spor enn dette behandles som singler/EP-er (bare når "Hopp over singler og EP-er" er på, og bare der antall spor er kjent). 0 slår av dette. Standard er 5.
+	PL	Albumy z mniejszą liczbą ścieżek są traktowane jak single/EP (tylko gdy włączono Pomijaj single i EP i tylko wtedy, gdy liczba ścieżek jest znana). 0 wyłącza tę funkcję. Domyślnie 5.
+	PT	Os álbuns com menos faixas do que este número são tratados como singles/EP (apenas se "Ignorar singles e EP" estiver ativado e apenas quando o número de faixas é conhecido). 0 desativa esta opção. O valor predefinido é 5.
+	RU	Альбомы, в которых меньше дорожек, считаются синглами/EP (только если включено "Пропускать синглы и EP" и только если число дорожек известно). 0 — отключить. По умолчанию 5.
+	SV	Album med färre spår än så behandlas som singlar/EP-skivor (bara när "Hoppa över singlar och EP-skivor" är på, och bara där antalet spår är känt). 0 stänger av detta. Standard är 5.
+	ZH_CN	音轨数少于此值的专辑会被视为单曲/EP（仅在开启“跳过单曲和 EP”且音轨数已知时）。设为 0 可关闭此功能。默认值为 5。
 
 PLUGIN_ALBUM_MIX_REPEAT_DAYS
+	CS	Neopakovat alba po dobu (dny)
+	DA	Gentag ikke album i (dage)
+	DE	Alben nicht wiederholen für (Tage)
 	EN	Don't Repeat Albums For (days)
+	ES	No repetir álbumes durante (días)
+	FI	Älä toista levyjä uudelleen (päivää)
+	FR	Ne pas répéter les albums pendant (jours)
+	HE	אל תחזור על אלבומים במשך (ימים)
+	HU	Albumok ismétlési tilalma (nap)
+	IT	Non ripetere gli album per (giorni)
+	JA	アルバムを繰り返さない期間（日）
+	NL	Albums niet herhalen gedurende (dagen)
+	NO	Ikke gjenta album i (dager)
+	PL	Nie powtarzaj albumów przez (dni)
+	PT	Não repetir álbuns durante (dias)
+	RU	Не повторять альбомы (дней)
+	SV	Upprepa inte album under (dagar)
+	ZH_CN	专辑不重复天数
 
 PLUGIN_ALBUM_MIX_REPEAT_DAYS_DESC
+	CS	Album přidané mixem nebude znovu přidáno po tento počet dní. Pamatuje se napříč mixy i restarty serveru, pro všechny přehrávače společně nebo pro každý přehrávač zvlášť (viz Uložená historie). 0 tuto funkci vypne. Výchozí hodnota je 30.
+	DA	Et album, som et mix har tilføjet, tilføjes ikke igen i så mange dage. Huskes på tværs af mix og genstart af serveren, for alle afspillere samlet eller for hver afspiller for sig (se "Gemt historik"). 0 slår dette fra. Standard er 30.
+	DE	Ein von einem Mix hinzugefügtes Album wird so viele Tage lang nicht erneut hinzugefügt. Wird über Mixe und Serverneustarts hinweg gespeichert, für alle Player gemeinsam oder für jeden Player einzeln (siehe "Gespeicherter Verlauf"). 0 deaktiviert dies. Standard ist 30.
 	EN	An album queued by a mix won't be queued again for this many days. Remembered across mixes and server restarts, for all players together or for each player separately (see Saved History). 0 turns this off. Default is 30.
+	ES	Un álbum añadido por una mezcla no se volverá a añadir durante este número de días. Se recuerda entre mezclas y reinicios del servidor, para todos los reproductores juntos o para cada reproductor por separado (véase "Historial guardado"). 0 lo desactiva. El valor predeterminado es 30.
+	FI	Miksauksen lisäämää levyä ei lisätä uudelleen näin moneen päivään. Tieto säilyy miksausten ja palvelimen uudelleenkäynnistysten yli, kaikille soittimille yhteisesti tai kullekin soittimelle erikseen (katso Tallennettu historia). 0 poistaa käytöstä. Oletus on 30.
+	FR	Un album ajouté par un mix ne sera plus ajouté pendant ce nombre de jours. Mémorisé d'un mix à l'autre et après les redémarrages du serveur, pour toutes les platines ensemble ou pour chaque platine séparément (voir "Historique enregistré"). 0 désactive ce réglage. Valeur par défaut : 30.
+	HE	אלבום שנוסף על ידי מיקס לא יתווסף שוב במשך מספר ימים זה. המידע נשמר בין מיקסים ולאחר הפעלה מחדש של השרת, לכל הנגנים יחד או לכל נגן בנפרד (ראה "היסטוריה שמורה"). 0 מבטל אפשרות זו. ברירת המחדל היא 30.
+	HU	A mix által sorba állított album ennyi napig nem kerül újra sorba. Ez mixeken és a szerver újraindításain át is megmarad, az összes lejátszóra közösen vagy lejátszónként külön (lásd: Mentett előzmények). 0 esetén kikapcsolva. Alapértelmezés: 30.
+	IT	Un album aggiunto da un mix non verrà aggiunto di nuovo per questo numero di giorni. Viene ricordato tra un mix e l'altro e dopo i riavvii del server, per tutti i lettori insieme o per ciascun lettore separatamente (vedere "Cronologia salvata"). 0 disattiva questa opzione. Il valore predefinito è 30.
+	JA	ミックスで追加されたアルバムは、この日数のあいだ再び追加されません。この記録はミックスをまたいでもサーバーを再起動しても保持され、全プレーヤー共通か、プレーヤーごとに個別かを選べます（「保存済み履歴」を参照）。0 にするとオフになります。デフォルトは 30 です。
+	NL	Een album dat door een mix is toegevoegd, wordt dit aantal dagen niet opnieuw toegevoegd. Dit wordt onthouden over mixen en herstarts van de server heen, voor alle muziekspelers samen of voor elke muziekspeler apart (zie "Opgeslagen geschiedenis"). 0 schakelt dit uit. Standaard is 30.
+	NO	Et album som en miks har lagt til, legges ikke til igjen på så mange dager. Huskes på tvers av mikser og omstarter av serveren, for alle spillere samlet eller for hver spiller for seg (se "Lagret historikk"). 0 slår av dette. Standard er 30.
+	PL	Album dodany przez miks nie zostanie dodany ponownie przez podaną liczbę dni. Jest zapamiętywany między miksami i po ponownym uruchomieniu serwera, wspólnie dla wszystkich odtwarzaczy lub osobno dla każdego odtwarzacza (zobacz Zapisana historia). 0 wyłącza tę funkcję. Domyślnie 30.
+	PT	Um álbum adicionado por um mix não voltará a ser adicionado durante este número de dias. É memorizado entre mixes e reinícios do servidor, para todos os reprodutores em conjunto ou para cada reprodutor separadamente (ver "Histórico guardado"). 0 desativa esta opção. O valor predefinido é 30.
+	RU	Альбом, добавленный миксом, не будет добавлен повторно в течение указанного числа дней. Запоминается между миксами и перезапусками сервера, для всех плееров вместе или для каждого плеера отдельно (см. "Сохранённая история"). 0 — отключить. По умолчанию 30.
+	SV	Ett album som en mix har lagt till läggs inte till igen under så här många dagar. Sparas mellan mixar och omstarter av servern, för alla spelare tillsammans eller för varje spelare separat (se "Sparad historik"). 0 stänger av detta. Standard är 30.
+	ZH_CN	由混合播放加入的专辑在此天数内不会再次加入。该记录在不同混合播放之间及服务器重启后都会保留，可由所有播放器共用，也可每个播放器单独保存（参见“已保存历史记录”）。设为 0 可关闭此功能。默认值为 30。
 
 PLUGIN_ALBUM_MIX_CLEAR_HISTORY
+	CS	Vymazat uloženou historii
+	DA	Ryd gemt historik
+	DE	Gespeicherten Verlauf löschen
 	EN	Clear Saved History
+	ES	Borrar historial guardado
+	FI	Tyhjennä tallennettu historia
+	FR	Effacer l'historique enregistré
+	HE	נקה היסטוריה שמורה
+	HU	Mentett előzmények törlése
+	IT	Cancella cronologia salvata
+	JA	保存済み履歴を消去
+	NL	Opgeslagen geschiedenis wissen
+	NO	Tøm lagret historikk
+	PL	Wyczyść zapisaną historię
+	PT	Limpar histórico guardado
+	RU	Очистить сохранённую историю
+	SV	Rensa sparad historik
+	ZH_CN	清除已保存历史记录
 
 PLUGIN_ALBUM_MIX_CLEAR_HISTORY_DESC
+	CS	Zaškrtněte a uložte, chcete-li zapomenout, která alba již hrála, aby je bylo možné ihned znovu přidat. Na této stránce se vymaže sdílená historie; vlastní historie přehrávače se maže na stránce nastavení daného přehrávače.
+	DA	Markér og gem for at glemme, hvilke album der er afspillet, så de kan tilføjes igen med det samme. På denne side ryddes den fælles historik; en afspillers egen historik ryddes på den afspillers indstillingsside.
+	DE	Aktivieren und speichern, um zu vergessen, welche Alben gespielt wurden, damit sie sofort wieder hinzugefügt werden können. Auf dieser Seite wird der gemeinsame Verlauf gelöscht; den eigenen Verlauf eines Players löschen Sie auf der Einstellungsseite dieses Players.
 	EN	Tick and save to forget which albums have been played, so they can be queued again straight away. On this page it clears the shared history; a player's own history is cleared on that player's settings page.
+	ES	Marque y guarde para olvidar qué álbumes se han reproducido, de modo que puedan volver a añadirse de inmediato. En esta página se borra el historial compartido; el historial propio de un reproductor se borra en la página de configuración de ese reproductor.
+	FI	Valitse ja tallenna, niin soitetut levyt unohdetaan ja ne voidaan lisätä uudelleen heti. Tällä sivulla tyhjennetään yhteinen historia; soittimen oma historia tyhjennetään kyseisen soittimen asetussivulla.
+	FR	Cochez et enregistrez pour oublier les albums déjà lus, afin qu'ils puissent être ajoutés à nouveau immédiatement. Sur cette page, cela efface l'historique partagé ; l'historique propre à une platine s'efface sur la page de réglages de cette platine.
+	HE	סמן ושמור כדי לשכוח אילו אלבומים הושמעו, כך שניתן יהיה להוסיף אותם שוב מיד. בדף זה נמחקת ההיסטוריה המשותפת; ההיסטוריה של נגן מסוים נמחקת בדף ההגדרות של אותו נגן.
+	HU	Jelölje be és mentse, hogy a rendszer elfelejtse, mely albumok szóltak már, így azok azonnal újra sorba kerülhetnek. Ezen az oldalon a közös előzmények törlődnek; egy lejátszó saját előzményei az adott lejátszó beállítási oldalán törölhetők.
+	IT	Selezionare e salvare per dimenticare quali album sono stati riprodotti, così da poterli aggiungere di nuovo subito. In questa pagina viene cancellata la cronologia condivisa; la cronologia di un singolo lettore si cancella nella pagina delle impostazioni di quel lettore.
+	JA	チェックして保存すると、再生済みアルバムの記録が消去され、すぐに再び追加できるようになります。このページでは共有の履歴が消去されます。プレーヤー個別の履歴は、そのプレーヤーのセッティングページで消去します。
+	NL	Vink aan en sla op om te vergeten welke albums zijn afgespeeld, zodat ze meteen weer kunnen worden toegevoegd. Op deze pagina wordt de gedeelde geschiedenis gewist; de eigen geschiedenis van een muziekspeler wis je op de instellingenpagina van die muziekspeler.
+	NO	Kryss av og lagre for å glemme hvilke album som er spilt, slik at de kan legges til igjen med en gang. På denne siden tømmes den felles historikken; en spillers egen historikk tømmes på innstillingssiden for den spilleren.
+	PL	Zaznacz i zapisz, aby zapomnieć, które albumy zostały odtworzone, dzięki czemu można je od razu dodać ponownie. Na tej stronie czyszczona jest wspólna historia; własną historię odtwarzacza czyści się na stronie ustawień tego odtwarzacza.
+	PT	Marque e guarde para esquecer os álbuns já reproduzidos, para que possam voltar a ser adicionados de imediato. Nesta página, limpa o histórico partilhado; o histórico próprio de um reprodutor limpa-se na página de configurações desse reprodutor.
+	RU	Отметьте и сохраните, чтобы забыть, какие альбомы уже воспроизводились, и их можно было сразу добавить снова. На этой странице очищается общая история; собственная история плеера очищается на странице настроек этого плеера.
+	SV	Markera och spara för att glömma vilka album som har spelats, så att de kan läggas till igen direkt. På den här sidan rensas den gemensamma historiken; en spelares egen historik rensas på den spelarens inställningssida.
+	ZH_CN	勾选并保存后，将忘记已播放过的专辑，使其可以立即再次加入。在此页面上清除的是共享历史记录；播放器自己的历史记录需在该播放器的设置页面上清除。
 
 PLUGIN_ALBUM_MIX_ALBUMS_REMEMBERED
+	CS	Zapamatovaná alba
+	DA	Huskede album
+	DE	Gespeicherte Alben
 	EN	Albums remembered
+	ES	Álbumes recordados
+	FI	Muistetut levyt
+	FR	Albums mémorisés
+	HE	אלבומים שמורים בזיכרון
+	HU	Megjegyzett albumok
+	IT	Album memorizzati
+	JA	記憶しているアルバム
+	NL	Onthouden albums
+	NO	Lagrede album
+	PL	Zapamiętane albumy
+	PT	Álbuns memorizados
+	RU	Запомнено альбомов
+	SV	Sparade album
+	ZH_CN	已记住的专辑
 
 PLUGIN_ALBUM_MIX_DEFAULTS_NOTE
+	CS	Níže uvedená nastavení jsou výchozí pro všechny přehrávače. Každý přehrávač může místo nich používat vlastní nastavení: Nastavení > Přehrávač > Album Mix.
+	DA	Indstillingerne nedenfor er standard for alle afspillere. Hver afspiller kan bruge sine egne indstillinger i stedet: Indstillinger > Afspiller > Album Mix.
+	DE	Die folgenden Einstellungen sind die Standardwerte für alle Player. Jeder Player kann stattdessen eigene Einstellungen verwenden: Einstellungen > Player > Album Mix.
 	EN	The settings below are the defaults for all players. Each player can use its own settings instead: Settings > Player > Album Mix.
+	ES	Los ajustes siguientes son los valores predeterminados para todos los reproductores. Cada reproductor puede usar su propia configuración: Configuración > Reproductor > Album Mix.
+	FI	Alla olevat asetukset ovat kaikkien soittimien oletuksia. Kukin soitin voi käyttää niiden sijaan omia asetuksiaan: Asetukset > Soitin > Album Mix.
+	FR	Les réglages ci-dessous sont les valeurs par défaut pour toutes les platines. Chaque platine peut utiliser ses propres réglages : Paramètres > Platine > Album Mix.
+	HE	ההגדרות שלהלן הן ברירות המחדל לכל הנגנים. כל נגן יכול להשתמש בהגדרות משלו במקום זאת: הגדרות > נגן > Album Mix.
+	HU	Az alábbi beállítások az összes lejátszó alapértelmezései. Minden lejátszó használhat helyettük saját beállításokat: Beállítások > Lejátszó > Album Mix.
+	IT	Le impostazioni seguenti sono quelle predefinite per tutti i lettori. Ogni lettore può usare impostazioni proprie: Impostazioni > Lettore > Album Mix.
+	JA	以下のセッティングは全プレーヤーのデフォルトです。各プレーヤーで個別のセッティングを使うこともできます：セッティング > プレーヤー > Album Mix。
+	NL	De onderstaande instellingen zijn de standaardwaarden voor alle muziekspelers. Elke muziekspeler kan in plaats daarvan eigen instellingen gebruiken: Instellingen > Muziekspeler > Album Mix.
+	NO	Innstillingene nedenfor er standard for alle spillere. Hver spiller kan bruke egne innstillinger i stedet: Innstillinger > Spiller > Album Mix.
+	PL	Poniższe ustawienia są domyślne dla wszystkich odtwarzaczy. Każdy odtwarzacz może zamiast nich używać własnych ustawień: Ustawienia > Odtwarzacz > Album Mix.
+	PT	As configurações abaixo são as predefinidas para todos os reprodutores. Cada reprodutor pode usar as suas próprias configurações: Configurações > Reprodutor > Album Mix.
+	RU	Настройки ниже используются по умолчанию для всех плееров. Каждый плеер может вместо них использовать собственные настройки: Настройки > Плеер > Album Mix.
+	SV	Inställningarna nedan är standard för alla spelare. Varje spelare kan använda egna inställningar i stället: Inställningar > Spelare > Album Mix.
+	ZH_CN	以下设置是所有播放器的默认值。每个播放器也可以改用自己的设置：设置 > 播放器 > Album Mix。
 
 PLUGIN_ALBUM_MIX_SOURCE
+	CS	Zdroj
+	DA	Kilde
+	DE	Quelle
 	EN	Source
+	ES	Origen
+	FI	Lähde
+	FR	Source
+	HE	מקור
+	HU	Forrás
+	IT	Sorgente
+	JA	ソース
+	NL	Bron
+	NO	Kilde
+	PL	Źródło
+	PT	Origem
+	RU	Источник
+	SV	Källa
+	ZH_CN	来源
 
 PLUGIN_ALBUM_MIX_SOURCE_DESC
+	CS	Kde mix hledá alba. "Pouze online" přidává jen alba, která nejsou ve vaší místní knihovně (objevování). Album, ze kterého mix spustíte, se přehraje vždy, ať pochází odkudkoli.
+	DA	Hvor mixet leder efter album. "Kun online" tilføjer kun album, der ikke er i dit lokale musikbibliotek (opdagelse). Det album, du starter mixet fra, afspilles altid, uanset hvor det kommer fra.
+	DE	Wo der Mix nach Alben sucht. "Nur online" fügt nur Alben hinzu, die nicht in Ihrer lokalen Musikbibliothek sind (zum Entdecken). Das Album, mit dem Sie den Mix starten, wird immer gespielt, egal woher es stammt.
 	EN	Where the mix looks for albums. "Online only" only queues albums that are not in your local library (discovery). The album you start the mix from is always played, wherever it comes from.
+	ES	Dónde busca álbumes la mezcla. "Solo en línea" solo añade álbumes que no están en su biblioteca local (descubrimiento). El álbum desde el que inicia la mezcla siempre se reproduce, venga de donde venga.
+	FI	Mistä miksaus hakee levyjä. "Vain verkosta" lisää vain levyjä, jotka eivät ole paikallisessa musiikkikirjastossasi (uusien löytäminen). Levy, josta miksaus aloitetaan, soitetaan aina, tuli se mistä tahansa.
+	FR	Où le mix cherche des albums. "En ligne uniquement" n'ajoute que des albums absents de votre bibliothèque locale (découverte). L'album à partir duquel vous lancez le mix est toujours lu, quelle que soit sa provenance.
+	HE	היכן המיקס מחפש אלבומים. "מקוון בלבד" מוסיף רק אלבומים שאינם בספרייה המקומית שלך (גילוי). האלבום שממנו מתחילים את המיקס מושמע תמיד, לא משנה מאיפה הוא מגיע.
+	HU	Hol keressen albumokat a mix. A "Csak online" csak olyan albumokat állít sorba, amelyek nincsenek meg a helyi zenekönyvtárában (felfedezés). Az album, amelyből a mixet indítja, mindig lejátszásra kerül, bárhonnan is származik.
+	IT	Dove il mix cerca gli album. "Solo online" aggiunge solo album che non sono nella libreria locale (scoperta). L'album da cui si avvia il mix viene sempre riprodotto, qualunque sia la sua provenienza.
+	JA	ミックスがアルバムを探す場所です。「オンラインのみ」では、ローカルライブラリにないアルバムだけを追加します（新しい音楽の発見）。ミックスの起点アルバムは、どこから来たものでも常に再生されます。
+	NL	Waar de mix naar albums zoekt. "Alleen online" voegt alleen albums toe die niet in je lokale muziekbibliotheek staan (ontdekken). Het album waarmee je de mix start, wordt altijd afgespeeld, waar het ook vandaan komt.
+	NO	Hvor miksen ser etter album. "Bare på nett" legger bare til album som ikke finnes i det lokale musikkbiblioteket ditt (oppdagelse). Albumet du starter miksen fra, spilles alltid, uansett hvor det kommer fra.
+	PL	Gdzie miks szuka albumów. "Tylko online" dodaje tylko albumy, których nie ma w Twojej lokalnej bibliotece (odkrywanie). Album, od którego zaczynasz miks, jest zawsze odtwarzany, niezależnie od tego, skąd pochodzi.
+	PT	Onde o mix procura álbuns. "Apenas online" só adiciona álbuns que não estão na sua biblioteca local (descoberta). O álbum a partir do qual inicia o mix é sempre reproduzido, venha de onde vier.
+	RU	Где микс ищет альбомы. "Только онлайн" добавляет только альбомы, которых нет в вашей локальной медиатеке (поиск нового). Альбом, с которого начинается микс, воспроизводится всегда, откуда бы он ни был.
+	SV	Var mixen letar efter album. "Bara online" lägger bara till album som inte finns i ditt lokala musikbibliotek (upptäckt). Albumet du startar mixen från spelas alltid, oavsett var det kommer ifrån.
+	ZH_CN	混合播放查找专辑的位置。“仅在线”只加入不在您本地音乐库中的专辑（发现新音乐）。混合播放的起始专辑无论来自何处，始终会播放。
 
 PLUGIN_ALBUM_MIX_SOURCE_LIBRARY_ONLY
+	CS	Pouze knihovna
+	DA	Kun musikbibliotek
+	DE	Nur Musikbibliothek
 	EN	Library only
+	ES	Solo biblioteca
+	FI	Vain musiikkikirjastosta
+	FR	Bibliothèque uniquement
+	HE	ספרייה בלבד
+	HU	Csak zenekönyvtár
+	IT	Solo libreria
+	JA	ライブラリのみ
+	NL	Alleen muziekbibliotheek
+	NO	Bare musikkbibliotek
+	PL	Tylko biblioteka
+	PT	Apenas biblioteca
+	RU	Только медиатека
+	SV	Bara musikbibliotek
+	ZH_CN	仅音乐库
 
 PLUGIN_ALBUM_MIX_SOURCE_LIBRARY_FIRST
+	CS	Nejprve knihovna, pak online
+	DA	Musikbibliotek først, derefter online
+	DE	Zuerst Musikbibliothek, dann online
 	EN	Library first, then online
+	ES	Primero biblioteca, luego en línea
+	FI	Ensin musiikkikirjastosta, sitten verkosta
+	FR	Bibliothèque d'abord, puis en ligne
+	HE	קודם ספרייה, אחר כך מקוון
+	HU	Előbb zenekönyvtár, aztán online
+	IT	Prima libreria, poi online
+	JA	ライブラリ優先、次にオンライン
+	NL	Eerst muziekbibliotheek, dan online
+	NO	Musikkbibliotek først, deretter på nett
+	PL	Najpierw biblioteka, potem online
+	PT	Primeiro biblioteca, depois online
+	RU	Сначала медиатека, затем онлайн
+	SV	Musikbibliotek först, sedan online
+	ZH_CN	先音乐库，后在线
 
 PLUGIN_ALBUM_MIX_SOURCE_ONLINE_FIRST
+	CS	Nejprve online, pak knihovna
+	DA	Online først, derefter musikbibliotek
+	DE	Zuerst online, dann Musikbibliothek
 	EN	Online first, then library
+	ES	Primero en línea, luego biblioteca
+	FI	Ensin verkosta, sitten musiikkikirjastosta
+	FR	En ligne d'abord, puis bibliothèque
+	HE	קודם מקוון, אחר כך ספרייה
+	HU	Előbb online, aztán zenekönyvtár
+	IT	Prima online, poi libreria
+	JA	オンライン優先、次にライブラリ
+	NL	Eerst online, dan muziekbibliotheek
+	NO	På nett først, deretter musikkbibliotek
+	PL	Najpierw online, potem biblioteka
+	PT	Primeiro online, depois biblioteca
+	RU	Сначала онлайн, затем медиатека
+	SV	Online först, sedan musikbibliotek
+	ZH_CN	先在线，后音乐库
 
 PLUGIN_ALBUM_MIX_SOURCE_ONLINE_ONLY
+	CS	Pouze online (alba, která nevlastníte)
+	DA	Kun online (album, du ikke ejer)
+	DE	Nur online (Alben, die Sie nicht besitzen)
 	EN	Online only (albums you don't own)
+	ES	Solo en línea (álbumes que no tiene)
+	FI	Vain verkosta (levyt, joita sinulla ei ole)
+	FR	En ligne uniquement (albums que vous ne possédez pas)
+	HE	מקוון בלבד (אלבומים שאינם ברשותך)
+	HU	Csak online (nem saját albumok)
+	IT	Solo online (album non posseduti)
+	JA	オンラインのみ（所有していないアルバム）
+	NL	Alleen online (albums die je niet hebt)
+	NO	Bare på nett (album du ikke eier)
+	PL	Tylko online (albumy, których nie masz)
+	PT	Apenas online (álbuns que não possui)
+	RU	Только онлайн (альбомы, которых у вас нет)
+	SV	Bara online (album du inte äger)
+	ZH_CN	仅在线（您未拥有的专辑）
 
 PLUGIN_ALBUM_MIX_HISTORY_SCOPE
+	CS	Uložená historie
+	DA	Gemt historik
+	DE	Gespeicherter Verlauf
 	EN	Saved History
+	ES	Historial guardado
+	FI	Tallennettu historia
+	FR	Historique enregistré
+	HE	היסטוריה שמורה
+	HU	Mentett előzmények
+	IT	Cronologia salvata
+	JA	保存済み履歴
+	NL	Opgeslagen geschiedenis
+	NO	Lagret historikk
+	PL	Zapisana historia
+	PT	Histórico guardado
+	RU	Сохранённая история
+	SV	Sparad historik
+	ZH_CN	已保存历史记录
 
 PLUGIN_ALBUM_MIX_HISTORY_SCOPE_DESC
+	CS	Zda všechny přehrávače sdílejí jednu historii přehraných alb (album přehrané v jedné místnosti se v jiné neopakuje), nebo si každý přehrávač vede vlastní. Synchronizované přehrávače používají historii hlavního přehrávače.
+	DA	Om alle afspillere deler én historik over afspillede album (et album, der er afspillet i ét rum, gentages ikke i et andet), eller om hver afspiller har sin egen. Synkroniserede afspillere bruger hovedafspillerens historik.
+	DE	Ob alle Player einen gemeinsamen Verlauf gespielter Alben nutzen (ein in einem Raum gespieltes Album wird in einem anderen nicht wiederholt) oder jeder Player seinen eigenen führt. Synchronisierte Player verwenden den Verlauf des Haupt-Players.
 	EN	Whether all players share one history of played albums (an album played in one room isn't repeated in another), or each player keeps its own. Synced players use the history of the main player.
+	ES	Indica si todos los reproductores comparten un único historial de álbumes reproducidos (un álbum reproducido en una habitación no se repite en otra) o si cada reproductor mantiene el suyo. Los reproductores sincronizados usan el historial del reproductor principal.
+	FI	Jakavatko kaikki soittimet yhteisen soitettujen levyjen historian (yhdessä huoneessa soitettua levyä ei toisteta toisessa), vai pitääkö kukin soitin omaa historiaansa. Synkronoidut soittimet käyttävät pääsoittimen historiaa.
+	FR	Indique si toutes les platines partagent un même historique des albums lus (un album lu dans une pièce n'est pas répété dans une autre) ou si chaque platine garde le sien. Les platines synchronisées utilisent l'historique de la platine principale.
+	HE	האם כל הנגנים חולקים היסטוריה אחת של אלבומים שהושמעו (אלבום שהושמע בחדר אחד לא יחזור בחדר אחר), או שכל נגן שומר היסטוריה משלו. נגנים מסונכרנים משתמשים בהיסטוריה של הנגן הראשי.
+	HU	Az összes lejátszó közös előzményt használ-e a lejátszott albumokról (az egyik szobában lejátszott album nem ismétlődik egy másikban), vagy minden lejátszó sajátot vezet. A szinkronizált lejátszók a fő lejátszó előzményeit használják.
+	IT	Indica se tutti i lettori condividono un'unica cronologia degli album riprodotti (un album riprodotto in una stanza non viene ripetuto in un'altra) o se ogni lettore ne mantiene una propria. I lettori sincronizzati usano la cronologia del lettore principale.
+	JA	全プレーヤーで再生済みアルバムの履歴を1つ共有するか（ある部屋で再生したアルバムは別の部屋で繰り返されません）、プレーヤーごとに個別の履歴を持つかを選びます。シンクロされているプレーヤーはメインプレーヤーの履歴を使います。
+	NL	Of alle muziekspelers één geschiedenis van afgespeelde albums delen (een album dat in de ene ruimte is afgespeeld, wordt in een andere niet herhaald), of dat elke muziekspeler een eigen geschiedenis bijhoudt. Gesynchroniseerde muziekspelers gebruiken de geschiedenis van de primaire muziekspeler.
+	NO	Om alle spillere deler én historikk over spilte album (et album som er spilt i ett rom, gjentas ikke i et annet), eller om hver spiller har sin egen. Synkroniserte spillere bruker historikken til hovedspilleren.
+	PL	Czy wszystkie odtwarzacze mają jedną wspólną historię odtworzonych albumów (album odtworzony w jednym pomieszczeniu nie jest powtarzany w innym), czy każdy odtwarzacz prowadzi własną. Zsynchronizowane odtwarzacze używają historii odtwarzacza głównego.
+	PT	Indica se todos os reprodutores partilham um único histórico de álbuns reproduzidos (um álbum reproduzido numa divisão não é repetido noutra) ou se cada reprodutor mantém o seu. Os reprodutores sincronizados usam o histórico do reprodutor principal.
+	RU	Используют ли все плееры одну общую историю воспроизведённых альбомов (альбом, сыгранный в одной комнате, не повторяется в другой), или каждый плеер ведёт свою. Синхронизированные плееры используют историю главного плеера.
+	SV	Om alla spelare delar en gemensam historik över spelade album (ett album som spelats i ett rum upprepas inte i ett annat) eller om varje spelare har sin egen. Synkroniserade spelare använder huvudspelarens historik.
+	ZH_CN	所有播放器是共用一份已播放专辑的历史记录（在一个房间播放过的专辑不会在另一个房间重复），还是每个播放器各自保存。同步的播放器使用主播放器的历史记录。
 
 PLUGIN_ALBUM_MIX_HISTORY_SHARED
+	CS	Sdílená všemi přehrávači
+	DA	Fælles for alle afspillere
+	DE	Gemeinsam für alle Player
 	EN	Shared by all players
+	ES	Compartido por todos los reproductores
+	FI	Yhteinen kaikille soittimille
+	FR	Partagé par toutes les platines
+	HE	משותפת לכל הנגנים
+	HU	Közös az összes lejátszó számára
+	IT	Condivisa da tutti i lettori
+	JA	全プレーヤーで共有
+	NL	Gedeeld door alle muziekspelers
+	NO	Felles for alle spillere
+	PL	Wspólna dla wszystkich odtwarzaczy
+	PT	Partilhado por todos os reprodutores
+	RU	Общая для всех плееров
+	SV	Gemensam för alla spelare
+	ZH_CN	所有播放器共用
 
 PLUGIN_ALBUM_MIX_HISTORY_PLAYER
+	CS	Samostatná pro každý přehrávač
+	DA	Separat for hver afspiller
+	DE	Getrennt für jeden Player
 	EN	Separate for each player
+	ES	Separado para cada reproductor
+	FI	Erillinen kullekin soittimelle
+	FR	Séparé pour chaque platine
+	HE	נפרדת לכל נגן
+	HU	Lejátszónként külön
+	IT	Separata per ogni lettore
+	JA	プレーヤーごとに個別
+	NL	Apart voor elke muziekspeler
+	NO	Separat for hver spiller
+	PL	Osobna dla każdego odtwarzacza
+	PT	Separado para cada reprodutor
+	RU	Отдельная для каждого плеера
+	SV	Separat för varje spelare
+	ZH_CN	每个播放器单独保存
 
 PLUGIN_ALBUM_MIX_PLAYER_DESC
+	CS	Nastavení Album Mix pro tento přehrávač. Klíč API Last.fm, velikost historie alb, doba neopakování alb a uložená historie se nastavují pro celý server v části Nastavení > Pokročilé > Album Mix.
+	DA	Indstillinger for Album Mix for denne afspiller. Last.fm-API-nøglen, størrelsen på albumhistorikken, "Gentag ikke album i" og den gemte historik angives for hele serveren under Indstillinger > Avanceret > Album Mix.
+	DE	Einstellungen für Album Mix für diesen Player. Der Last.fm-API-Schlüssel, die Größe des Albumverlaufs, "Alben nicht wiederholen für" und der gespeicherte Verlauf werden für den gesamten Server unter Einstellungen > Erweitert > Album Mix festgelegt.
 	EN	Album Mix settings for this player. The Last.fm API key, album history size, repeat days and saved history are set for the whole server under Settings > Advanced > Album Mix.
+	ES	Configuración de Album Mix para este reproductor. La clave de API de Last.fm, el tamaño del historial de álbumes, los días sin repetir y el historial guardado se configuran para todo el servidor en Configuración > Avanzada > Album Mix.
+	FI	Tämän soittimen Album Mix -asetukset. Last.fm API -avain, levyhistorian koko, uudelleentoiston estopäivät ja tallennettu historia asetetaan koko palvelimelle kohdassa Asetukset > Lisäasetukset > Album Mix.
+	FR	Réglages d'Album Mix pour cette platine. La clé API Last.fm, la taille de l'historique des albums, les jours sans répétition et l'historique enregistré se règlent pour tout le serveur dans Paramètres > Avancé > Album Mix.
+	HE	הגדרות Album Mix לנגן זה. מפתח ה-API של Last.fm, גודל היסטוריית האלבומים, "אל תחזור על אלבומים במשך" וההיסטוריה השמורה מוגדרים לכל השרת תחת הגדרות > Advanced > Album Mix.
+	HU	Az Album Mix beállításai ehhez a lejátszóhoz. A Last.fm API-kulcs, az albumelőzmények mérete, az albumok ismétlési tilalma és a mentett előzmények a teljes szerverre vonatkozóan itt állíthatók be: Beállítások > Kiterjesztett > Album Mix.
+	IT	Impostazioni di Album Mix per questo lettore. La chiave API Last.fm, la dimensione della cronologia album, i giorni senza ripetizioni e la cronologia salvata si impostano per l'intero server in Impostazioni > Avanzate > Album Mix.
+	JA	このプレーヤーの Album Mix セッティングです。Last.fm API キー、アルバム履歴のサイズ、アルバムを繰り返さない期間、保存済み履歴は、セッティング > Advanced > Album Mix でサーバー全体に対して設定します。
+	NL	Album Mix-instellingen voor deze muziekspeler. De Last.fm-API-sleutel, de grootte van de albumgeschiedenis, "Albums niet herhalen gedurende" en de opgeslagen geschiedenis worden voor de hele server ingesteld onder Instellingen > Geavanceerd > Album Mix.
+	NO	Innstillinger for Album Mix for denne spilleren. Last.fm-API-nøkkelen, størrelse på albumhistorikk, "Ikke gjenta album i" og lagret historikk angis for hele serveren under Innstillinger > Avansert > Album Mix.
+	PL	Ustawienia Album Mix dla tego odtwarzacza. Klucz API Last.fm, rozmiar historii albumów, liczbę dni bez powtórzeń i zapisaną historię ustawia się dla całego serwera w sekcji Ustawienia > Zaawansowane > Album Mix.
+	PT	Configurações do Album Mix para este reprodutor. A chave da API do Last.fm, o tamanho do histórico de álbuns, os dias sem repetição e o histórico guardado são definidos para todo o servidor em Configurações > Avançados > Album Mix.
+	RU	Настройки Album Mix для этого плеера. Ключ API Last.fm, размер истории альбомов, срок запрета повторов и сохранённая история задаются для всего сервера в разделе Настройки > Дополнительно > Album Mix.
+	SV	Inställningar för Album Mix för den här spelaren. Last.fm-API-nyckeln, storlek på albumhistorik, "Upprepa inte album under" och sparad historik ställs in för hela servern under Inställningar > Avancerat > Album Mix.
+	ZH_CN	此播放器的 Album Mix 设置。Last.fm API 密钥、专辑历史记录数量、专辑不重复天数和已保存历史记录针对整个服务器，在 设置 > 高级 > Album Mix 中设置。
 
 PLUGIN_ALBUM_MIX_PLAYER_SYNCED
+	CS	Tento přehrávač je synchronizován: po tuto dobu se používá nastavení hlavního přehrávače ve skupině.
+	DA	Denne afspiller er synkroniseret: Så længe den er det, bruges indstillingerne for hovedafspilleren i gruppen.
+	DE	Dieser Player ist synchronisiert: Solange dies der Fall ist, werden die Einstellungen des Haupt-Players der Gruppe verwendet.
 	EN	This player is synced: while it is, the settings of the main player in the group are used.
+	ES	Este reproductor está sincronizado: mientras lo esté, se usa la configuración del reproductor principal del grupo.
+	FI	Tämä soitin on synkronoitu: sen ajan käytetään ryhmän pääsoittimen asetuksia.
+	FR	Cette platine est synchronisée : tant qu'elle l'est, les réglages de la platine principale du groupe sont utilisés.
+	HE	נגן זה מסונכרן: כל עוד הוא מסונכרן, נעשה שימוש בהגדרות של הנגן הראשי בקבוצה.
+	HU	Ez a lejátszó szinkronizálva van: amíg így van, a csoport fő lejátszójának beállításai érvényesek.
+	IT	Questo lettore è sincronizzato: finché lo è, vengono usate le impostazioni del lettore principale del gruppo.
+	JA	このプレーヤーはシンクロされています。シンクロ中は、グループ内のメインプレーヤーのセッティングが使われます。
+	NL	Deze muziekspeler is gesynchroniseerd: zolang dat zo is, worden de instellingen van de primaire muziekspeler in de groep gebruikt.
+	NO	Denne spilleren er synkronisert: Så lenge den er det, brukes innstillingene til hovedspilleren i gruppen.
+	PL	Ten odtwarzacz jest zsynchronizowany: dopóki tak jest, używane są ustawienia odtwarzacza głównego w grupie.
+	PT	Este reprodutor está sincronizado: enquanto estiver, são usadas as configurações do reprodutor principal do grupo.
+	RU	Этот плеер синхронизирован: пока это так, используются настройки главного плеера группы.
+	SV	Den här spelaren är synkroniserad: så länge den är det används inställningarna för huvudspelaren i gruppen.
+	ZH_CN	此播放器已同步：同步期间将使用组中主播放器的设置。
 
 PLUGIN_ALBUM_MIX_OWN_SETTINGS
+	CS	Použít vlastní nastavení pro tento přehrávač
+	DA	Brug egne indstillinger for denne afspiller
+	DE	Eigene Einstellungen für diesen Player verwenden
 	EN	Use Own Settings for This Player
+	ES	Usar configuración propia para este reproductor
+	FI	Käytä tälle soittimelle omia asetuksia
+	FR	Utiliser des réglages propres à cette platine
+	HE	השתמש בהגדרות נפרדות לנגן זה
+	HU	Saját beállítások használata ehhez a lejátszóhoz
+	IT	Usa impostazioni proprie per questo lettore
+	JA	このプレーヤー専用のセッティングを使用
+	NL	Eigen instellingen voor deze muziekspeler gebruiken
+	NO	Bruk egne innstillinger for denne spilleren
+	PL	Użyj własnych ustawień dla tego odtwarzacza
+	PT	Usar configurações próprias para este reprodutor
+	RU	Использовать собственные настройки для этого плеера
+	SV	Använd egna inställningar för den här spelaren
+	ZH_CN	为此播放器使用独立设置
 
 PLUGIN_ALBUM_MIX_OWN_SETTINGS_DESC
+	CS	Je-li zaškrtnuto, tento přehrávač používá níže uvedená nastavení. Není-li zaškrtnuto, používá výchozí nastavení serveru v části Nastavení > Pokročilé > Album Mix a níže uvedené hodnoty se zachovají, ale nepoužijí.
+	DA	Når den er markeret, bruger denne afspiller indstillingerne nedenfor. Når den ikke er markeret, bruger den serverens standardindstillinger under Indstillinger > Avanceret > Album Mix, og værdierne nedenfor gemmes, men bruges ikke.
+	DE	Wenn aktiviert, verwendet dieser Player die folgenden Einstellungen. Wenn nicht aktiviert, verwendet er die Serverstandards unter Einstellungen > Erweitert > Album Mix; die folgenden Werte bleiben erhalten, werden aber nicht verwendet.
 	EN	When ticked, this player uses the settings below. When not ticked, it uses the server defaults under Settings > Advanced > Album Mix, and the values below are kept but not used.
+	ES	Si está marcado, este reproductor usa la configuración siguiente. Si no lo está, usa los valores predeterminados del servidor en Configuración > Avanzada > Album Mix, y los valores siguientes se conservan pero no se usan.
+	FI	Kun valittu, tämä soitin käyttää alla olevia asetuksia. Kun ei valittu, se käyttää palvelimen oletuksia kohdassa Asetukset > Lisäasetukset > Album Mix, ja alla olevat arvot säilytetään mutta niitä ei käytetä.
+	FR	Si cette case est cochée, cette platine utilise les réglages ci-dessous. Sinon, elle utilise les valeurs par défaut du serveur dans Paramètres > Avancé > Album Mix, et les valeurs ci-dessous sont conservées mais non utilisées.
+	HE	כאשר האפשרות מסומנת, נגן זה משתמש בהגדרות שלהלן. כאשר היא אינה מסומנת, הוא משתמש בברירות המחדל של השרת תחת הגדרות > Advanced > Album Mix, והערכים שלהלן נשמרים אך אינם בשימוש.
+	HU	Ha be van jelölve, ez a lejátszó az alábbi beállításokat használja. Ha nincs bejelölve, a szerver alapértelmezéseit használja (Beállítások > Kiterjesztett > Album Mix), az alábbi értékek pedig megmaradnak, de nincsenek használatban.
+	IT	Se selezionato, questo lettore usa le impostazioni seguenti. Se non selezionato, usa le impostazioni predefinite del server in Impostazioni > Avanzate > Album Mix, e i valori seguenti vengono conservati ma non usati.
+	JA	チェックすると、このプレーヤーは以下のセッティングを使います。チェックしない場合は セッティング > Advanced > Album Mix のサーバーデフォルトを使い、以下の値は保持されますが使われません。
+	NL	Indien aangevinkt, gebruikt deze muziekspeler de onderstaande instellingen. Indien niet aangevinkt, gebruikt hij de standaardwaarden van de server onder Instellingen > Geavanceerd > Album Mix; de onderstaande waarden blijven bewaard maar worden niet gebruikt.
+	NO	Når det er krysset av, bruker denne spilleren innstillingene nedenfor. Når det ikke er krysset av, bruker den serverens standardinnstillinger under Innstillinger > Avansert > Album Mix, og verdiene nedenfor beholdes, men brukes ikke.
+	PL	Gdy zaznaczone, ten odtwarzacz używa poniższych ustawień. Gdy niezaznaczone, używa domyślnych ustawień serwera z sekcji Ustawienia > Zaawansowane > Album Mix, a poniższe wartości są zachowywane, ale nieużywane.
+	PT	Se estiver marcado, este reprodutor usa as configurações abaixo. Se não estiver marcado, usa as predefinições do servidor em Configurações > Avançados > Album Mix, e os valores abaixo são mantidos mas não usados.
+	RU	Если отмечено, этот плеер использует настройки ниже. Если не отмечено, используются настройки сервера по умолчанию из раздела Настройки > Дополнительно > Album Mix, а значения ниже сохраняются, но не применяются.
+	SV	När rutan är markerad använder den här spelaren inställningarna nedan. När den inte är markerad används serverns standardinställningar under Inställningar > Avancerat > Album Mix, och värdena nedan sparas men används inte.
+	ZH_CN	勾选后，此播放器使用下方设置。未勾选时，使用 设置 > 高级 > Album Mix 中的服务器默认值，下方的值会保留但不使用。
 
 PLUGIN_ALBUM_MIX_CLEAR_PLAYER_HISTORY_DESC
+	CS	Zaškrtněte a uložte, chcete-li zapomenout, která alba tento přehrávač přehrál, aby je bylo možné ihned znovu přidat.
+	DA	Markér og gem for at glemme, hvilke album denne afspiller har afspillet, så de kan tilføjes igen med det samme.
+	DE	Aktivieren und speichern, um zu vergessen, welche Alben dieser Player gespielt hat, damit sie sofort wieder hinzugefügt werden können.
 	EN	Tick and save to forget which albums this player has played, so they can be queued again straight away.
+	ES	Marque y guarde para olvidar qué álbumes ha reproducido este reproductor, de modo que puedan volver a añadirse de inmediato.
+	FI	Valitse ja tallenna, niin tämän soittimen soittamat levyt unohdetaan ja ne voidaan lisätä uudelleen heti.
+	FR	Cochez et enregistrez pour oublier les albums lus par cette platine, afin qu'ils puissent être ajoutés à nouveau immédiatement.
+	HE	סמן ושמור כדי לשכוח אילו אלבומים הושמעו בנגן זה, כך שניתן יהיה להוסיף אותם שוב מיד.
+	HU	Jelölje be és mentse, hogy a rendszer elfelejtse, mely albumokat játszotta le ez a lejátszó, így azok azonnal újra sorba kerülhetnek.
+	IT	Selezionare e salvare per dimenticare quali album ha riprodotto questo lettore, così da poterli aggiungere di nuovo subito.
+	JA	チェックして保存すると、このプレーヤーで再生済みのアルバムの記録が消去され、すぐに再び追加できるようになります。
+	NL	Vink aan en sla op om te vergeten welke albums deze muziekspeler heeft afgespeeld, zodat ze meteen weer kunnen worden toegevoegd.
+	NO	Kryss av og lagre for å glemme hvilke album denne spilleren har spilt, slik at de kan legges til igjen med en gang.
+	PL	Zaznacz i zapisz, aby zapomnieć, które albumy odtworzył ten odtwarzacz, dzięki czemu można je od razu dodać ponownie.
+	PT	Marque e guarde para esquecer os álbuns reproduzidos por este reprodutor, para que possam voltar a ser adicionados de imediato.
+	RU	Отметьте и сохраните, чтобы забыть, какие альбомы воспроизводил этот плеер, и их можно было сразу добавить снова.
+	SV	Markera och spara för att glömma vilka album den här spelaren har spelat, så att de kan läggas till igen direkt.
+	ZH_CN	勾选并保存后，将忘记此播放器已播放过的专辑，使其可以立即再次加入。
 
 PLUGIN_ALBUM_MIX_CREATE_TRACK
+	CS	Vytvořit Album Mix z této skladby
+	DA	Opret Album Mix ud fra dette nummer
+	DE	Album Mix zu diesem Titel erstellen
 	EN	Create Album Mix from This Track
+	ES	Crear Album Mix a partir de esta pista
+	FI	Luo Album Mix tästä raidasta
+	FR	Créer un Album Mix à partir de cette piste
+	HE	צור Album Mix מרצועה זו
+	HU	Album Mix létrehozása a zeneszám alapján
+	IT	Crea Album Mix da questo brano
+	JA	このトラックから Album Mix を作成
+	NL	Album Mix maken van dit nummer
+	NO	Lag Album Mix fra dette sporet
+	PL	Utwórz Album Mix na podstawie tej ścieżki
+	PT	Criar Album Mix a partir desta faixa
+	RU	Создать Album Mix на основе этой дорожки
+	SV	Skapa Album Mix från det här spåret
+	ZH_CN	从此音轨创建 Album Mix
 
 PLUGIN_ALBUM_MIX_CREATE_ARTIST
+	CS	Vytvořit Album Mix z tohoto interpreta
+	DA	Opret Album Mix ud fra denne kunstner
+	DE	Album Mix zu diesem Interpreten erstellen
 	EN	Create Album Mix from This Artist
+	ES	Crear Album Mix a partir de este artista
+	FI	Luo Album Mix tästä artistista
+	FR	Créer un Album Mix à partir de cet artiste
+	HE	צור Album Mix ממבצע זה
+	HU	Album Mix létrehozása az előadó alapján
+	IT	Crea Album Mix da questo artista
+	JA	このアーチストから Album Mix を作成
+	NL	Album Mix maken van deze artiest
+	NO	Lag Album Mix fra denne artisten
+	PL	Utwórz Album Mix na podstawie tego wykonawcy
+	PT	Criar Album Mix a partir deste artista
+	RU	Создать Album Mix на основе этого исполнителя
+	SV	Skapa Album Mix från den här artisten
+	ZH_CN	从此艺人创建 Album Mix
 
 PLUGIN_ALBUM_MIX_CONTINUE
+	CS	Pokračovat jako Album Mix
+	DA	Fortsæt som Album Mix
+	DE	Als Album Mix fortsetzen
 	EN	Continue as Album Mix
+	ES	Continuar como Album Mix
+	FI	Jatka Album Mix -tilassa
+	FR	Continuer en Album Mix
+	HE	המשך כ-Album Mix
+	HU	Folytatás Album Mix módban
+	IT	Continua come Album Mix
+	JA	Album Mix として続ける
+	NL	Doorgaan als Album Mix
+	NO	Fortsett som Album Mix
+	PL	Kontynuuj jako Album Mix
+	PT	Continuar como Album Mix
+	RU	Продолжить как Album Mix
+	SV	Fortsätt som Album Mix
+	ZH_CN	以 Album Mix 继续
 
 PLUGIN_ALBUM_MIX_QUEUED_LIKE_TRACK
+	CS	Přidáno: %s, podobné skladbě "%s"
+	DA	%s tilføjet, ligner "%s"
+	DE	%s hinzugefügt, ähnlich wie "%s"
 	EN	Queued %s, like "%s"
+	ES	Añadido %s, similar a "%s"
+	FI	Lisätty: %s, samankaltainen kuin "%s"
+	FR	Ajouté : %s, proche de "%s"
+	HE	נוסף %s, בדומה ל-"%s"
+	HU	Sorba állítva: %s, hasonló ehhez a zeneszámhoz: "%s"
+	IT	Aggiunto %s, simile a "%s"
+	JA	%s を追加しました（「%s」に類似）
+	NL	%s toegevoegd, vergelijkbaar met "%s"
+	NO	%s lagt til, ligner på "%s"
+	PL	Dodano: %s, podobny do ścieżki "%s"
+	PT	Adicionado %s, semelhante a "%s"
+	RU	Добавлено: %s, похоже на дорожку "%s"
+	SV	%s tillagt, likt "%s"
+	ZH_CN	已加入 %s，类似于“%s”
 
 PLUGIN_ALBUM_MIX_QUEUED_LIKE_ARTIST
+	CS	Přidáno: %s, podobné interpretovi: %s
+	DA	%s tilføjet, kunstner der ligner %s
+	DE	%s hinzugefügt, ähnlicher Interpret wie %s
 	EN	Queued %s, similar artist to %s
+	ES	Añadido %s, artista similar a %s
+	FI	Lisätty: %s, samankaltainen kuin artisti %s
+	FR	Ajouté : %s, artiste proche de %s
+	HE	נוסף %s, מבצע דומה ל-%s
+	HU	Sorba állítva: %s, hasonló ehhez az előadóhoz: %s
+	IT	Aggiunto %s, artista simile a %s
+	JA	%s を追加しました（%s の類似アーチスト）
+	NL	%s toegevoegd, artiest vergelijkbaar met %s
+	NO	%s lagt til, artist som ligner på %s
+	PL	Dodano: %s, wykonawca podobny do: %s
+	PT	Adicionado %s, artista semelhante a %s
+	RU	Добавлено: %s, похоже на исполнителя: %s
+	SV	%s tillagt, artist som liknar %s
+	ZH_CN	已加入 %s，与 %s 相似的艺人
 
 PLUGIN_ALBUM_MIX_NO_API_KEY
+	CS	Album Mix: v nastavení Album Mix není zadán klíč API Last.fm
+	DA	Album Mix: Ingen Last.fm-API-nøgle angivet i indstillingerne for Album Mix
+	DE	Album Mix: Kein Last.fm-API-Schlüssel in den Einstellungen für Album Mix festgelegt
 	EN	Album Mix: no Last.fm API key set in the Album Mix settings
+	ES	Album Mix: no se ha configurado ninguna clave de API de Last.fm en la configuración de Album Mix
+	FI	Album Mix: Last.fm API -avainta ei ole asetettu Album Mix -asetuksissa
+	FR	Album Mix : aucune clé API Last.fm définie dans les réglages d'Album Mix
+	HE	Album Mix: לא הוגדר מפתח API של Last.fm בהגדרות Album Mix
+	HU	Album Mix: nincs megadva Last.fm API-kulcs az Album Mix beállításaiban
+	IT	Album Mix: nessuna chiave API Last.fm impostata nelle impostazioni di Album Mix
+	JA	Album Mix：Album Mix のセッティングで Last.fm API キーが設定されていません
+	NL	Album Mix: geen Last.fm-API-sleutel ingesteld in de Album Mix-instellingen
+	NO	Album Mix: ingen Last.fm-API-nøkkel er angitt i innstillingene for Album Mix
+	PL	Album Mix: nie ustawiono klucza API Last.fm w ustawieniach Album Mix
+	PT	Album Mix: nenhuma chave da API do Last.fm definida nas configurações do Album Mix
+	RU	Album Mix: в настройках Album Mix не задан ключ API Last.fm
+	SV	Album Mix: ingen Last.fm-API-nyckel angiven i inställningarna för Album Mix
+	ZH_CN	Album Mix：未在 Album Mix 设置中设置 Last.fm API 密钥
 
 PLUGIN_ALBUM_MIX_INCLUDE_SEED
+	CS	Přehrát výchozí album nebo skladbu
+	DA	Afspil startalbummet eller -nummeret
+	DE	Startalbum oder -titel abspielen
 	EN	Play the Starting Album or Track
+	ES	Reproducir el álbum o la pista inicial
+	FI	Soita aloituslevy tai -raita
+	FR	Lire l'album ou la piste de départ
+	HE	השמע את אלבום הפתיחה או רצועת הפתיחה
+	HU	Kiinduló album vagy zeneszám lejátszása
+	IT	Riproduci l'album o il brano iniziale
+	JA	起点のアルバムまたはトラックを再生
+	NL	Startalbum of startnummer afspelen
+	NO	Spill startalbumet eller startsporet
+	PL	Odtwórz początkowy album lub ścieżkę
+	PT	Reproduzir o álbum ou a faixa inicial
+	RU	Воспроизводить исходный альбом или дорожку
+	SV	Spela startalbumet eller startspåret
+	ZH_CN	播放起始专辑或音轨
 
 PLUGIN_ALBUM_MIX_INCLUDE_SEED_DESC
+	CS	Je-li zaškrtnuto, nejprve se přehraje album, skladba nebo interpret, ze kterého mix spustíte. Není-li zaškrtnuto, mix začne rovnou prvním podobným albem. "Pokračovat jako Album Mix" vždy ponechá to, co právě hraje.
+	DA	Når den er markeret, afspilles det album, nummer eller den kunstner, du starter et mix fra, først. Når den ikke er markeret, starter mixet med det samme med det første lignende album. "Fortsæt som Album Mix" beholder altid det, der afspilles.
+	DE	Wenn aktiviert, wird das Album, der Titel oder der Interpret, mit dem Sie einen Mix starten, zuerst gespielt. Wenn nicht aktiviert, beginnt der Mix sofort mit dem ersten ähnlichen Album. "Als Album Mix fortsetzen" behält immer bei, was gerade gespielt wird.
 	EN	When ticked, the album, track or artist you start a mix from is played first. When not ticked, the mix starts straight away with the first similar album. "Continue as Album Mix" always keeps what is playing.
+	ES	Si está marcado, el álbum, la pista o el artista desde el que inicia una mezcla se reproduce primero. Si no lo está, la mezcla empieza directamente con el primer álbum similar. "Continuar como Album Mix" siempre conserva lo que se está reproduciendo.
+	FI	Kun valittu, levy, raita tai artisti, josta miksaus aloitetaan, soitetaan ensin. Kun ei valittu, miksaus alkaa suoraan ensimmäisellä samankaltaisella levyllä. "Jatka Album Mix -tilassa" säilyttää aina sen, mikä soi.
+	FR	Si cette case est cochée, l'album, la piste ou l'artiste à partir duquel vous lancez un mix est lu en premier. Sinon, le mix commence directement par le premier album similaire. "Continuer en Album Mix" conserve toujours la lecture en cours.
+	HE	כאשר האפשרות מסומנת, האלבום, הרצועה או המבצע שממנו מתחילים מיקס מושמעים ראשונים. כאשר היא אינה מסומנת, המיקס מתחיל מיד עם האלבום הדומה הראשון. "המשך כ-Album Mix" תמיד שומר את מה שמושמע כעת.
+	HU	Ha be van jelölve, először az az album, zeneszám vagy előadó szól, amelyből a mixet indítja. Ha nincs bejelölve, a mix azonnal az első hasonló albummal indul. A "Folytatás Album Mix módban" mindig megtartja azt, ami éppen szól.
+	IT	Se selezionato, l'album, il brano o l'artista da cui si avvia un mix viene riprodotto per primo. Se non selezionato, il mix inizia subito con il primo album simile. "Continua come Album Mix" mantiene sempre ciò che è in riproduzione.
+	JA	チェックすると、ミックスの起点となるアルバム、トラック、またはアーチストを最初に再生します。チェックしない場合、ミックスは最初の類似アルバムからすぐに始まります。「Album Mix として続ける」では、再生中の内容が常に維持されます。
+	NL	Indien aangevinkt, wordt het album, nummer of de artiest waarmee je een mix start eerst afgespeeld. Indien niet aangevinkt, begint de mix meteen met het eerste vergelijkbare album. "Doorgaan als Album Mix" behoudt altijd wat er nu speelt.
+	NO	Når det er krysset av, spilles albumet, sporet eller artisten du starter en miks fra, først. Når det ikke er krysset av, starter miksen med en gang med det første lignende albumet. "Fortsett som Album Mix" beholder alltid det som spilles.
+	PL	Gdy zaznaczone, album, ścieżka lub wykonawca, od którego zaczynasz miks, jest odtwarzany jako pierwszy. Gdy niezaznaczone, miks zaczyna się od razu od pierwszego podobnego albumu. "Kontynuuj jako Album Mix" zawsze zachowuje to, co jest odtwarzane.
+	PT	Se estiver marcado, o álbum, a faixa ou o artista a partir do qual inicia um mix é reproduzido primeiro. Se não estiver marcado, o mix começa logo com o primeiro álbum semelhante. "Continuar como Album Mix" mantém sempre o que está a tocar.
+	RU	Если отмечено, сначала воспроизводится альбом, дорожка или исполнитель, с которого начинается микс. Если не отмечено, микс сразу начинается с первого похожего альбома. "Продолжить как Album Mix" всегда сохраняет то, что воспроизводится сейчас.
+	SV	När rutan är markerad spelas albumet, spåret eller artisten du startar en mix från först. När den inte är markerad börjar mixen direkt med det första liknande albumet. "Fortsätt som Album Mix" behåller alltid det som spelas.
+	ZH_CN	勾选后，将先播放混合播放的起始专辑、音轨或艺人。未勾选时，混合播放直接从第一张相似专辑开始。“以 Album Mix 继续”始终保留当前正在播放的内容。

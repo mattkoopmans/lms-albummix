@@ -132,6 +132,7 @@ Switch back to the normal URL (`.../main/repo.xml`, see **Installation**) to ret
 - The albums of the next few candidate tracks are looked up in advance, so picking an album takes fewer round trips
 - The next album is looked up about halfway through the current one, rather than when only Queue Lookahead tracks (2 by default) are left, so the queue is much less likely to run out on short albums or slow lookups. Queue Lookahead is now the latest point for the lookup
 - All Last.fm requests go through one place in the code
+- Translated into every language LMS itself supports (Czech, Danish, Dutch, Finnish, French, German, Hebrew, Hungarian, Italian, Japanese, Norwegian, Polish, Portuguese, Russian, Simplified Chinese, Spanish and Swedish), using LMS's own words for its menus. Corrections from native speakers are welcome
 
 ### 1.9.2 (development build towards 2.0)
 - Start a mix from a track, an artist, or the song playing now (**Continue as Album Mix**), as well as from an album
