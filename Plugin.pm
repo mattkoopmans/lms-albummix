@@ -11,6 +11,7 @@ use Slim::Utils::Prefs;
 use Slim::Utils::Strings qw(string cstring);
 use Slim::Networking::SimpleAsyncHTTP;
 
+use File::Spec;
 use JSON::XS qw(decode_json);
 use URI::Escape qw(uri_escape_utf8);
 
@@ -26,6 +27,13 @@ use constant LOOKUP_TIMEOUT_SECS      => 120;  # a lookup still pending after th
 use constant LASTFM_CACHE_MAX         => 2000; # most Last.fm answers kept in memory
 use constant LASTFM_RETRY_DELAYS      => (2, 5);   # seconds before the 1st and 2nd retry of a failed Last.fm request
 use constant PREFETCH_TRACKS          => 3;    # similar tracks whose album is asked for ahead of time
+use constant LASTFM_MAX_PARALLEL      => 2;    # Last.fm requests running at the same time
+use constant LASTFM_MAX_AHEAD_WAITING => 6;    # fetch-ahead requests that may wait for a free slot
+use constant LASTFM_HTTP_TIMEOUT      => 15;   # seconds to wait for one Last.fm request
+use constant LASTFM_BUDGET_SECS       => 30;   # no retry is started after this long for one question
+use constant LASTFM_SAVE_DELAY_SECS   => 300;  # saved Last.fm answers are written to disk at most this often
+use constant ONLINE_SEARCH_TIMEOUT_SECS => 20; # an online service that doesn't answer in time is skipped
+use constant ALBUM_ARRIVAL_SECS       => 60;   # how long to wait for a queued online album to appear in the queue
 use constant DEFAULT_VARIETY          => 10;   # pick at random among this many of the closest matches
 use constant DEFAULT_REPEAT_DAYS      => 30;   # don't queue an album again within this many days
 use constant DEFAULT_MIN_TRACKS       => 5;    # albums with fewer tracks count as singles/EPs
@@ -188,6 +196,9 @@ sub initPlugin {
 		[1, 0, 0, \&cliStop],
 	);
 
+	# Last.fm answers saved before the last restart
+	_loadLastfmCache();
+
 	$log->info("Album Mix plugin initialised");
 	return $class;
 }
@@ -195,6 +206,8 @@ sub initPlugin {
 sub shutdownPlugin {
 	Slim::Control::Request::unsubscribe(\&onPlaylistChange);
 	Slim::Control::Request::unsubscribe(\&onPlaylistReplaced);
+	_saveLastfmCache() if _lastfmCacheDirty();
+	_lastfmReset();
 	%playerState = ();
 }
 
@@ -768,6 +781,21 @@ sub onPlaylistChange {
 		$state->{pendingLookup} = 0;
 	}
 
+	# An album found online was just queued, but the service hasn't added
+	# its tracks yet: the queue still looks short, so wait for it rather
+	# than queuing a second album
+	if ( my $wait = $state->{awaitingAlbum} ) {
+		if ( _albumArrived($client, $wait) ) {
+			delete $state->{awaitingAlbum};
+		} elsif ( time() - $wait->{since} < ALBUM_ARRIVAL_SECS ) {
+			$log->debug("Album Mix: Waiting for the queued album to appear in the queue");
+			return;
+		} else {
+			$log->warn("Album Mix: The queued album didn't appear in the queue, carrying on");
+			delete $state->{awaitingAlbum};
+		}
+	}
+
 	my $songIndex   = Slim::Player::Source::streamingSongIndex($client);
 	my $playlistLen = Slim::Player::Playlist::count($client);
 	my $lookahead   = _pref($client, 'lookahead') || DEFAULT_LOOKAHEAD;
@@ -1187,7 +1215,7 @@ sub _prefetchTrackInfo {
 		last unless $todo > 0;
 		my $t = $tracks->[$i];
 		next if _isArtistOnCooldown($clientId, $t->{artist});
-		_lastfm('track.getInfo', _trackInfoParams($t->{artist}, $t->{title}), sub {});
+		_lastfm('track.getInfo', _trackInfoParams($t->{artist}, $t->{title}), sub {}, { prefetch => 1 });
 		$todo--;
 	}
 }
@@ -1405,24 +1433,32 @@ my %LASTFM_TRIM = (
 	},
 );
 
-my %lastfmCache;     # question => { time, result }
-my %lastfmPending;   # question => [ callbacks waiting for the answer ]
+my %lastfmCache;      # question => { time, result }
+my %lastfmPending;    # question => { method, url, callbacks, prefetch, attempt, started }
+my @lastfmQueue;      # questions waiting for a free slot
+my $lastfmRunning = 0;
+my $lastfmGen     = 0;   # changes at shutdown, so older requests can't free newer slots
+my $lastfmDirty   = 0;   # the cache has changed since it was last saved
 
 # Ask Last.fm. $callback->($answer) gets the decoded answer (a hash, which
 # may be an error answer such as "track not found"), or undef if Last.fm
 # couldn't be reached or no API key is set.
-#  - Answers are kept for a while (%LASTFM_CACHE_TTL), so asking the same
-#    question again soon costs nothing.
+#  - Answers are kept for a while (%LASTFM_CACHE_TTL), also across server
+#    restarts, so asking the same question again soon costs nothing.
 #  - The same question asked while it is already on its way waits for that
 #    answer rather than being sent twice.
+#  - At most LASTFM_MAX_PARALLEL requests run at once; the others wait,
+#    real lookups before fetching ahead ($opts->{prefetch}).
 #  - Temporary failures (network, Last.fm busy or offline) are retried
-#    twice, after LASTFM_RETRY_DELAYS seconds.
+#    after LASTFM_RETRY_DELAYS seconds, while the question is less than
+#    LASTFM_BUDGET_SECS old.
 sub _lastfm {
-	my ( $method, $params, $callback ) = @_;
+	my ( $method, $params, $callback, $opts ) = @_;
 
 	my $apiKey = $prefs->get('lastfm_api_key');
 	return $callback->(undef) unless $apiKey;
 
+	my $prefetch = $opts && $opts->{prefetch} ? 1 : 0;
 	my $query = join('&', map { "$_=" . uri_escape_utf8($params->{$_} // '') } sort keys %$params);
 	my $key   = "$method?$query";   # the question, without the API key
 
@@ -1440,13 +1476,33 @@ sub _lastfm {
 		delete $lastfmCache{$key};
 	}
 
-	if ( $lastfmPending{$key} ) {
-		push @{ $lastfmPending{$key} }, $callback;
+	if ( my $pending = $lastfmPending{$key} ) {
+		push @{ $pending->{callbacks} }, $callback;
+
+		# A real lookup now needs this answer: it no longer waits behind
+		# the real lookups
+		$pending->{prefetch} = 0 unless $prefetch;
 		return;
 	}
-	$lastfmPending{$key} = [ $callback ];
 
-	_lastfmFetch($method, $key, LASTFM_API_BASE . "?method=$method&$query&api_key=$apiKey&format=json", 0);
+	$lastfmPending{$key} = {
+		method    => $method,
+		url       => LASTFM_API_BASE . "?method=$method&$query&api_key=$apiKey&format=json",
+		callbacks => [ $callback ],
+		prefetch  => $prefetch,
+		attempt   => 0,
+	};
+
+	_lastfmQueue($key);
+}
+
+# Forget the requests on their way (at shutdown): their answers are no
+# longer wanted, and the slots must not stay taken
+sub _lastfmReset {
+	%lastfmPending = ();
+	@lastfmQueue   = ();
+	$lastfmRunning = 0;
+	$lastfmGen++;
 }
 
 # Call one waiting caller. If it fails, the others still get the answer.
@@ -1456,40 +1512,105 @@ sub _lastfmCall {
 		or $log->error("Album Mix: Handling the Last.fm $method answer failed: $@");
 }
 
+# Put a question in line for a free slot. If too many fetch-ahead requests
+# are waiting (the lookups have moved on), the oldest are dropped.
+sub _lastfmQueue {
+	my $key = shift;
+
+	push @lastfmQueue, $key;
+
+	my @ahead = grep { $lastfmPending{$_} && $lastfmPending{$_}->{prefetch} } @lastfmQueue;
+	while ( @ahead > LASTFM_MAX_AHEAD_WAITING ) {
+		my $drop = shift @ahead;
+		@lastfmQueue = grep { $_ ne $drop } @lastfmQueue;
+		$log->debug("Album Mix: Not fetching ahead: $drop");
+		_lastfmFinish($drop, undef, 0);
+	}
+
+	_lastfmPump();
+}
+
+# Start waiting questions while there are free slots: real lookups first
+sub _lastfmPump {
+	while ( $lastfmRunning < LASTFM_MAX_PARALLEL ) {
+		@lastfmQueue = grep { $lastfmPending{$_} } @lastfmQueue;
+		last unless @lastfmQueue;
+
+		my ($i) = grep { !$lastfmPending{ $lastfmQueue[$_] }->{prefetch} } 0 .. $#lastfmQueue;
+		my $key = splice(@lastfmQueue, $i // 0, 1);
+
+		$lastfmRunning++;
+		_lastfmFetch($key);
+	}
+}
+
+# The answer to a question is in (or it failed, $result undef): keep it if
+# $keep, and tell everyone waiting for it
+sub _lastfmFinish {
+	my ( $key, $result, $keep ) = @_;
+
+	my $pending = delete $lastfmPending{$key} || return;
+
+	if ( $keep ) {
+		$lastfmCache{$key} = { time => time(), result => $result };
+		_trimLastfmCache();
+		_lastfmCacheChanged();
+	}
+
+	_lastfmCall($pending->{method}, $_, $result) for @{ $pending->{callbacks} };
+}
+
 sub _lastfmFetch {
-	my ( $method, $key, $url, $attempt ) = @_;
+	my $key     = shift;
+	my $pending = $lastfmPending{$key};
+	my $method  = $pending->{method};
+
+	$pending->{started} //= time();
+
+	# Exactly once per request: free the slot, then start the next one
+	my $gen      = $lastfmGen;
+	my $released = 0;
+	my $watchdog;
+	my $release = sub {
+		return if $released++;
+		$lastfmRunning-- if $lastfmRunning > 0 && $gen == $lastfmGen;
+		if ( $watchdog ) {
+			eval { Slim::Utils::Timers::killSpecific($watchdog) };
+			undef $watchdog;   # the timer refers back to this request
+		}
+	};
+
+	# Only this request's question is answered: a late answer after the
+	# question was given up and asked again must not answer the new one
+	my $mine = sub { $lastfmPending{$key} && $lastfmPending{$key} == $pending };
 
 	my $finish = sub {
-		my ( $result, $keep ) = @_;
-
-		if ( $keep ) {
-			$lastfmCache{$key} = { time => time(), result => $result };
-
-			# Keep the cache to a sensible size: drop the oldest tenth
-			if ( keys %lastfmCache > LASTFM_CACHE_MAX ) {
-				my @oldest = sort { $lastfmCache{$a}->{time} <=> $lastfmCache{$b}->{time} } keys %lastfmCache;
-				delete @lastfmCache{ @oldest[ 0 .. int(LASTFM_CACHE_MAX / 10) ] };
-			}
-		}
-
-		my $waiting = delete $lastfmPending{$key} || [];
-		_lastfmCall($method, $_, $result) for @$waiting;
+		$release->();
+		_lastfmFinish($key, @_) if $mine->();
+		_lastfmPump();
 	};
 
 	my $retry = sub {
-		my $why    = shift;
-		my @delays = LASTFM_RETRY_DELAYS;
+		my $why = shift;
+		$release->();
+		return _lastfmPump() unless $mine->();
 
-		if ( $attempt < @delays ) {
-			$log->info("Album Mix: Last.fm $method failed ($why), trying again in $delays[$attempt]s");
-			Slim::Utils::Timers::setTimer(undef, time() + $delays[$attempt], sub {
-				_lastfmFetch($method, $key, $url, $attempt + 1);
+		my @delays = LASTFM_RETRY_DELAYS;
+		my $delay  = $delays[ $pending->{attempt} ];
+
+		if ( defined $delay && time() - $pending->{started} + $delay < LASTFM_BUDGET_SECS ) {
+			$log->info("Album Mix: Last.fm $method failed ($why), trying again in ${delay}s");
+			$pending->{attempt}++;
+			Slim::Utils::Timers::setTimer(undef, time() + $delay, sub {
+				_lastfmQueue($key) if $lastfmPending{$key} && $lastfmPending{$key} == $pending;
 			});
+			_lastfmPump();
 			return;
 		}
 
 		$log->warn("Album Mix: Last.fm $method failed ($why), giving up");
-		$finish->(undef, 0);
+		_lastfmFinish($key, undef, 0);
+		_lastfmPump();
 	};
 
 	# A decoded Last.fm answer, which may be an error answer
@@ -1514,38 +1635,152 @@ sub _lastfmFetch {
 		$finish->($trim ? $trim->($result) : $result, 1);
 	};
 
-	Slim::Networking::SimpleAsyncHTTP->new(
-		sub {
-			my $http   = shift;
-			my $result = eval { decode_json($http->content) };
+	my $ok = eval {
+		Slim::Networking::SimpleAsyncHTTP->new(
+			sub {
+				my $http   = shift;
+				my $result = eval { decode_json($http->content) };
 
-			return $retry->('unreadable answer') if $@ || ref $result ne 'HASH';
-			$answer->($result);
-		},
-		sub {
-			my ( $http, $error, $response ) = @_;
-			$error ||= ( eval { $http->error } || 'unknown' );
+				return $retry->('unreadable answer') if $@ || ref $result ne 'HASH';
+				$answer->($result);
+			},
+			sub {
+				my ( $http, $error, $response ) = @_;
+				$error ||= ( eval { $http->error } || 'unknown' );
 
-			# Last.fm sends some errors with an HTTP error status (e.g. 403 for
-			# a bad API key). If the body with the reason was read, use it
-			# (current LMS versions don't read it; the status is used then)
-			my $body   = blessed($response) && $response->can('content') ? $response->content : undef;
-			my $result = $body ? eval { decode_json($body) } : undef;
-			return $answer->($result) if ref $result eq 'HASH' && $result->{error};
+				# Last.fm sends some errors with an HTTP error status (e.g. 403 for
+				# a bad API key). If the body with the reason was read, use it
+				# (current LMS versions don't read it; the status is used then)
+				my $body   = blessed($response) && $response->can('content') ? $response->content : undef;
+				my $result = $body ? eval { decode_json($body) } : undef;
+				return $answer->($result) if ref $result eq 'HASH' && $result->{error};
 
-			# Other client errors won't get better by asking again; timeouts,
-			# server errors (5xx) and "too many requests" (429) may
-			my $status = blessed($response) && $response->can('code') ? $response->code : undef;
-			($status) = $error =~ /^\s*(\d{3})\b/ unless $status;
-			if ( $status && $status =~ /^4/ && $status != 408 && $status != 429 ) {
-				$log->warn("Album Mix: Last.fm $method failed ($error)");
-				return $finish->(undef, 0);
-			}
+				# Other client errors won't get better by asking again; timeouts,
+				# server errors (5xx) and "too many requests" (429) may
+				my $status = blessed($response) && $response->can('code') ? $response->code : undef;
+				($status) = $error =~ /^\s*(\d{3})\b/ unless $status;
+				if ( $status && $status =~ /^4/ && $status != 408 && $status != 429 ) {
+					$log->warn("Album Mix: Last.fm $method failed ($error)");
+					return $finish->(undef, 0);
+				}
 
-			$retry->("network error: $error");
-		},
-		{ timeout => 15 },
-	)->get($url);
+				$retry->("network error: $error");
+			},
+			{ timeout => LASTFM_HTTP_TIMEOUT },
+		)->get($pending->{url});
+		1;
+	};
+
+	# (if the request had already answered, there is nothing left to do)
+	return $retry->("request failed: $@") unless $ok || $released;
+	return if $released;
+
+	# Should the request never call back, don't let it hold its slot
+	$watchdog = Slim::Utils::Timers::setTimer(undef, time() + LASTFM_HTTP_TIMEOUT + 10, sub {
+		return if $released || $gen != $lastfmGen;
+		$log->warn("Album Mix: Last.fm $method gave no answer at all");
+		$retry->('no answer');
+	});
+}
+
+# Keep the cache to a sensible size: drop the oldest tenth
+sub _trimLastfmCache {
+	return unless keys %lastfmCache > LASTFM_CACHE_MAX;
+	my @oldest = sort { $lastfmCache{$a}->{time} <=> $lastfmCache{$b}->{time} } keys %lastfmCache;
+	delete @lastfmCache{ @oldest[ 0 .. int(LASTFM_CACHE_MAX / 10) ] };
+}
+
+# ------------------------------------------------------------
+# The Last.fm answers are saved in the server's cache folder, so they
+# survive a restart: at most every LASTFM_SAVE_DELAY_SECS, and when the
+# server shuts down.
+# ------------------------------------------------------------
+
+my $noCacheDirLogged;
+sub _lastfmCacheFile {
+	my $dir = eval { preferences('server')->get('cachedir') };
+	unless ( $dir && -d $dir ) {
+		$log->info("Album Mix: No cache folder, Last.fm answers are not kept across restarts") unless $noCacheDirLogged++;
+		return;
+	}
+	return File::Spec->catfile($dir, 'albummix-lastfm.json');
+}
+
+sub _lastfmCacheDirty { $lastfmDirty }
+
+sub _lastfmCacheChanged {
+	return if $lastfmDirty++;
+	Slim::Utils::Timers::setTimer(undef, time() + LASTFM_SAVE_DELAY_SECS, sub { _saveLastfmCache() if $lastfmDirty });
+}
+
+my $saveFailures = 0;
+sub _saveLastfmCache {
+	$lastfmDirty = 0;
+
+	my $file = _lastfmCacheFile() || return;
+	my $now  = time();
+
+	my %answers = map { $_ => $lastfmCache{$_} } grep {
+		my ($method) = /^([^?]+)\?/;
+		$method && $now - $lastfmCache{$_}->{time} < ($LASTFM_CACHE_TTL{$method} || 0);
+	} keys %lastfmCache;
+
+	my $ok = eval {
+		my $json = JSON::XS->new->utf8->canonical->encode({ version => 1, answers => \%answers });
+		open(my $fh, '>:raw', "$file.tmp") or die "$!\n";
+		print $fh $json or die "$!\n";
+		close($fh) or die "$!\n";
+		rename("$file.tmp", $file) or die "$!\n";
+		1;
+	};
+
+	if ( $ok ) {
+		$saveFailures = 0;
+		$log->debug("Album Mix: Saved " . scalar(keys %answers) . " Last.fm answers to $file");
+	} else {
+		$log->warn("Album Mix: Could not save the Last.fm answers to $file: $@") unless $saveFailures;
+		unlink "$file.tmp";
+
+		# Try again later, a few times; after that only at shutdown
+		if ( ++$saveFailures < 3 ) {
+			_lastfmCacheChanged();
+		} else {
+			$lastfmDirty = 1;
+		}
+	}
+}
+
+sub _loadLastfmCache {
+	my $file = _lastfmCacheFile() || return;
+	return unless -r $file;
+
+	my $data = eval {
+		open(my $fh, '<:raw', $file) or die "$!\n";
+		local $/;
+		my $json = <$fh>;
+		close $fh;
+		JSON::XS->new->utf8->decode($json);
+	};
+
+	unless ( ref $data eq 'HASH' && ($data->{version} || 0) == 1 && ref $data->{answers} eq 'HASH' ) {
+		$log->warn("Album Mix: Ignoring the saved Last.fm answers in $file" . ($@ ? ": $@" : ''));
+		return;
+	}
+
+	my $now = time();
+	my $n   = 0;
+	while ( my ( $key, $entry ) = each %{ $data->{answers} } ) {
+		my ($method) = $key =~ /^([^?]+)\?/;
+		next unless $method && $LASTFM_CACHE_TTL{$method};
+		next unless ref $entry eq 'HASH' && $entry->{time} && ref $entry->{result} eq 'HASH';
+		next if $now - $entry->{time} >= $LASTFM_CACHE_TTL{$method} || $entry->{time} > $now + 60;
+
+		$lastfmCache{$key} = { time => $entry->{time}, result => $entry->{result} };
+		$n++;
+	}
+
+	_trimLastfmCache();
+	$log->info("Album Mix: Loaded $n saved Last.fm answers");
 }
 
 # ============================================================
@@ -1744,9 +1979,13 @@ sub _findAndPlayAlbum {
 	$callback ||= sub {};
 	$opts     ||= {};
 
-	# Record where this album will start in the playlist (for seed track selection)
+	# Record where this album will start in the playlist (for seed track
+	# selection), and what the queue looked like before (to tell when an
+	# online album has arrived)
 	my $clientId = $client->master->id;
 	my $preCount = Slim::Player::Playlist::count($client);
+	my $preFirst = _trackUrl( Slim::Player::Playlist::track($client, 0) );
+	my $preTime  = _playlistUpdated($client);
 
 	# The mix is about to replace the queue itself: ignore the "queue
 	# replaced" events that causes (the guard ends once its first song plays)
@@ -1756,11 +1995,16 @@ sub _findAndPlayAlbum {
 	}
 
 	my $done = sub {
-		my ( $found, $reason, $title ) = @_;
+		my ( $found, $reason, $title, $online ) = @_;
 
 		if ( $found && (my $state = $playerState{$clientId}) ) {
 			$state->{lastAlbumStartIndex} = $cmd eq 'load' ? 0 : $preCount;
 			$log->debug("Album Mix: Last album starts at playlist index $state->{lastAlbumStartIndex}");
+
+			# Library albums are in the queue straight away; an online
+			# service adds its tracks a moment later
+			delete $state->{awaitingAlbum};
+			_awaitAlbum($client, $state, { cmd => $cmd, preCount => $preCount, preFirst => $preFirst, updated => $preTime }) if $online;
 		}
 
 		$callback->($found, $reason, $title);
@@ -1820,7 +2064,7 @@ sub _findAndPlayAlbum {
 		my ( $found, $reason, $title ) = @_;
 
 		if ( $found ) {
-			$done->(1, undef, $title);
+			$done->(1, undef, $title, 1);
 		} elsif ( $reason ) {
 			# Not wanted any more (see isWanted) — don't fall back to the library
 			$done->(0, $reason);
@@ -1832,6 +2076,67 @@ sub _findAndPlayAlbum {
 			$done->(0, 'not found in library or online');
 		}
 	}, $opts);
+}
+
+# The URL of a playlist track, or undef
+sub _trackUrl {
+	my $track = shift;
+	return blessed($track) && $track->can('url') ? $track->url : undef;
+}
+
+# An album found online was queued: until its tracks show up in the queue,
+# onPlaylistChange doesn't start another lookup. If they never do (the
+# service failed to add them), the mix carries on after ALBUM_ARRIVAL_SECS.
+sub _awaitAlbum {
+	my ( $client, $state, $wait ) = @_;
+
+	return if _albumArrived($client, $wait);
+
+	$wait->{since} = time();
+	$state->{awaitingAlbum} = $wait;
+
+	$client = $client->master;
+	my $clientId = $client->id;
+	Slim::Utils::Timers::setTimer(undef, time() + ALBUM_ARRIVAL_SECS, sub {
+		return unless _isCurrent($clientId, $state) && $state->{awaitingAlbum} && $state->{awaitingAlbum} == $wait;
+		delete $state->{awaitingAlbum};
+		return if _albumArrived($client, $wait);
+
+		# The album that was to replace the queue never came, and the queue
+		# is empty: there is nothing to continue from
+		if ( $wait->{cmd} eq 'load' && !Slim::Player::Playlist::count($client) ) {
+			$log->warn("Album Mix: The album never reached the queue, stopping");
+			return stopAlbumMix($client);
+		}
+
+		$log->warn("Album Mix: The queued album didn't appear in the queue in time, looking for another one");
+		_findNextAlbum($client, $clientId) unless $state->{pendingLookup};
+	});
+}
+
+# True once the tracks of an album queued online are in the queue: for
+# 'add', the queue has grown; for 'load', the queue was replaced
+sub _albumArrived {
+	my ( $client, $wait ) = @_;
+
+	my $count = Slim::Player::Playlist::count($client);
+	return $count > $wait->{preCount} if $wait->{cmd} ne 'load';
+	return 0 unless $count;
+
+	my $first = _trackUrl( Slim::Player::Playlist::track($client, 0) );
+	return 1 if defined $first && ( !defined $wait->{preFirst} || $first ne $wait->{preFirst} );
+
+	# The same album again (its first track has the same URL): the queue
+	# has changed since before the album was asked for (a queue that was
+	# only cleared has no tracks, see above)
+	my $updated = _playlistUpdated($client);
+	return defined $updated && defined $wait->{updated} && $updated != $wait->{updated} ? 1 : 0;
+}
+
+# When the queue last changed, if this LMS version says so
+sub _playlistUpdated {
+	my $client = shift;
+	return $client->can('currentPlaylistUpdateTime') ? eval { $client->currentPlaylistUpdateTime } : undef;
 }
 
 # Look an album up in the local library. Returns ( album id, title ), or
@@ -1963,6 +2268,8 @@ sub _getAvailableServices {
 sub _tryOnlineService {
 	my ( $client, $artist, $album, $cmd, $services, $index, $callback, $opts ) = @_;
 
+	$opts ||= {};
+
 	if ( $index >= scalar @$services ) {
 		$log->info("Album Mix: No online service had '$album' by '$artist'");
 		$callback->(0);
@@ -1982,8 +2289,27 @@ sub _tryOnlineService {
 		return;
 	}
 
+	# A service that doesn't answer in time is skipped. Its answer, if it
+	# still comes, is not used: it may no longer add anything (isWanted).
+	my ( $answered, $timedOut ) = ( 0, 0 );
+	my $wanted = $opts->{isWanted};
+	my %serviceOpts = (
+		%$opts,
+		isWanted => sub { !$timedOut && ( !$wanted || $wanted->() ) },
+	);
+
+	Slim::Utils::Timers::setTimer(undef, time() + ONLINE_SEARCH_TIMEOUT_SECS, sub {
+		return if $answered++;
+		$timedOut = 1;
+		return $callback->(0, 'no longer wanted') if $wanted && !$wanted->();
+		$log->warn("Album Mix: $service didn't answer within " . ONLINE_SEARCH_TIMEOUT_SECS . "s, trying the next service");
+		_tryOnlineService($client, $artist, $album, $cmd, $services, $index + 1, $callback, $opts);
+	});
+
 	$handler->($client, $artist, $album, $cmd, sub {
 		my ( $found, $reason, $title ) = @_;
+		return if $answered++;
+
 		if ( $found ) {
 			$callback->(1, undef, $title);
 		} elsif ( $reason ) {
@@ -1991,7 +2317,7 @@ sub _tryOnlineService {
 		} else {
 			_tryOnlineService($client, $artist, $album, $cmd, $services, $index + 1, $callback, $opts);
 		}
-	}, $opts);
+	}, \%serviceOpts);
 }
 
 sub _searchSpotty {

@@ -132,6 +132,10 @@ Switch back to the normal URL (`.../main/repo.xml`, see **Installation**) to ret
 - The albums of the next few candidate tracks are looked up in advance, so picking an album takes fewer round trips
 - The next album is looked up about halfway through the current one, rather than when only Queue Lookahead tracks (2 by default) are left, so the queue is much less likely to run out on short albums or slow lookups. Queue Lookahead is now the latest point for the lookup
 - All Last.fm requests go through one place in the code
+- Saved Last.fm answers are kept in the server's cache folder (albummix-lastfm.json), so they survive a restart
+- At most two Last.fm requests run at once, with real lookups ahead of fetching in advance, so Last.fm's rate limit isn't hit; a request isn't retried once it is 30 seconds old
+- An online service (TIDAL, Spotify) that doesn't answer a search within 20 seconds is skipped and the next one is tried; its late answer can't add a second album
+- While an album found online is still being added to the queue, no further album is looked up, so two albums can't be queued at once. If it hasn't appeared after 60 seconds, the mix looks for another one
 - Translated into every language LMS itself supports (Czech, Danish, Dutch, Finnish, French, German, Hebrew, Hungarian, Italian, Japanese, Norwegian, Polish, Portuguese, Russian, Simplified Chinese, Spanish and Swedish), using LMS's own words for its menus. Corrections from native speakers are welcome
 
 ### 1.9.2 (development build towards 2.0)
