@@ -44,7 +44,7 @@ PLUGIN_ALBUM_MIX_LOOKAHEAD
 	EN	Queue Lookahead (tracks)
 
 PLUGIN_ALBUM_MIX_LOOKAHEAD_DESC
-	EN	Number of tracks before the end of the current album to queue the next one.
+	EN	The next album is normally looked up halfway through the last album in the queue. This setting is the latest point: if no lookup has started by then, it starts when only this many tracks are left.
 
 PLUGIN_ALBUM_MIX_STOP
 	EN	Stop Album Mix

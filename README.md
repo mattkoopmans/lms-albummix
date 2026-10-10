@@ -10,7 +10,7 @@ A [Lyrion Music Server](https://lyrion.org/) plugin that creates continuous, dis
    - an artist — **Create Album Mix from This Artist** (artists in your library; online services' own artist pages may not offer it)
    - the song playing now — **Continue as Album Mix** (keeps your queue; when it is about to run out, similar albums are added, following on from the last album in it). Not offered for radio streams, which never end
 2. What you started from plays first — the album, the track, or one of the artist's albums. Untick **Play the Starting Album or Track** to skip it and start straight away with the first similar album.
-3. When the current album is nearly finished, the plugin picks a track from it and asks Last.fm for similar tracks
+3. About halfway through the last album in the queue (or, at the latest, when only **Queue Lookahead** tracks are left), the plugin picks a track from it and asks Last.fm for similar tracks, so the next album is queued well before the music runs out
 4. It works out which album each similar track belongs to and queues the first one that passes the checks below
 5. A short message says what was queued and why (e.g. *Queued Tusk — Fleetwood Mac, like "Dreams"*); the server log has the full reason
 6. The process repeats — each queued album seeds the next
@@ -93,7 +93,7 @@ Settings are on two pages:
 | Minimum Tracks per Album | 5 | yes | With Skip Singles and EPs on, releases with fewer tracks are skipped where the track count is known (library, TIDAL, Spotify). 0 turns it off |
 | Variety | 10 | yes | How many of the closest Last.fm matches to choose from at random (closer matches are more likely). 1 always takes the closest match |
 | Artist Cooldown | 5 | yes | Number of albums that must be queued before the same artist can appear again. 0 turns it off |
-| Queue Lookahead | 2 | yes | Number of tracks left in the queue when the next album is looked up |
+| Queue Lookahead | 2 | yes | The next album is normally looked up about halfway through the last album in the queue. This setting is the latest point: if no lookup has started by then, it starts when only this many tracks are left |
 | Album History Size | 50 | — | Number of albums remembered within one mix to avoid repeats |
 | Don't Repeat Albums For | 30 days | — | An album queued by a mix isn't queued again for this many days. Remembered across mixes and server restarts. 0 turns it off |
 | Saved History | Shared by all players | — | **Shared**: an album played on one player isn't repeated on another. **Separate for each player**: each player (sync group: its main player) has its own history |
@@ -126,6 +126,12 @@ Switch back to the normal URL (`.../main/repo.xml`, see **Installation**) to ret
 - Online services: TIDAL is tested. Spotify (via Spotty) is supported but untested. Qobuz and Deezer are not supported yet
 
 ## Changelog
+
+### 1.9.3 (development build towards 2.0)
+- Faster, more reliable Last.fm lookups: answers are kept for a while (similar tracks, similar artists and top albums for a day, album details for a week; only the parts the plugin uses, to save memory) instead of being asked again, a question already on its way isn't sent twice, and a request that fails for a passing reason (network, Last.fm busy or offline) is retried twice before giving up
+- The albums of the next few candidate tracks are looked up in advance, so picking an album takes fewer round trips
+- The next album is looked up about halfway through the current one, rather than when only Queue Lookahead tracks (2 by default) are left, so the queue is much less likely to run out on short albums or slow lookups. Queue Lookahead is now the latest point for the lookup
+- All Last.fm requests go through one place in the code
 
 ### 1.9.2 (development build towards 2.0)
 - Start a mix from a track, an artist, or the song playing now (**Continue as Album Mix**), as well as from an album

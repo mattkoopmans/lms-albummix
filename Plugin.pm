@@ -23,6 +23,9 @@ use constant MAX_SIMILAR_ARTISTS      => 20;   # fallback: artist.getSimilar
 use constant MAX_TOP_ALBUMS           => 10;   # fallback: artist.getTopAlbums
 use constant START_GUARD_SECS         => 60;   # max time to ignore "queue replaced" events while the seed album loads
 use constant LOOKUP_TIMEOUT_SECS      => 120;  # a lookup still pending after this long is treated as stuck
+use constant LASTFM_CACHE_MAX         => 2000; # most Last.fm answers kept in memory
+use constant LASTFM_RETRY_DELAYS      => (2, 5);   # seconds before the 1st and 2nd retry of a failed Last.fm request
+use constant PREFETCH_TRACKS          => 3;    # similar tracks whose album is asked for ahead of time
 use constant DEFAULT_VARIETY          => 10;   # pick at random among this many of the closest matches
 use constant DEFAULT_REPEAT_DAYS      => 30;   # don't queue an album again within this many days
 use constant DEFAULT_MIN_TRACKS       => 5;    # albums with fewer tracks count as singles/EPs
@@ -629,29 +632,17 @@ sub _albumSeedTrack {
 		}
 	}
 
-	my $apiKey = $prefs->get('lastfm_api_key');
-	my $url = LASTFM_API_BASE . '?method=album.getInfo'
-		. '&artist=' . uri_escape_utf8($seed->{artist} // '')
-		. '&album='  . uri_escape_utf8($seed->{album} // '')
-		. '&autocorrect=1'
-		. '&api_key=' . $apiKey
-		. '&format=json';
+	_lastfm('album.getInfo', { artist => $seed->{artist} // '', album => $seed->{album} // '', autocorrect => 1 }, sub {
+		my $result = shift;
 
-	Slim::Networking::SimpleAsyncHTTP->new(
-		sub {
-			my $http   = shift;
-			my $result = eval { decode_json($http->content) };
-			my $tracks = $result && ref $result eq 'HASH' && $result->{album} && $result->{album}->{tracks}
-				? $result->{album}->{tracks}->{track} : [];
-			$tracks = [$tracks] if ref $tracks eq 'HASH';
-			my @titles = grep { defined && length } map { ref $_ eq 'HASH' ? $_->{name} : undef } @{ $tracks || [] };
+		my $tracks = $result && ref $result->{album} eq 'HASH' && ref $result->{album}->{tracks} eq 'HASH'
+			? $result->{album}->{tracks}->{track} : [];
+		$tracks = [$tracks] if ref $tracks eq 'HASH';
+		my @titles = grep { defined && length } map { ref $_ eq 'HASH' ? $_->{name} : undef } @{ $tracks || [] };
 
-			$log->debug("Album Mix: album.getInfo gave " . scalar(@titles) . " tracks for '$seed->{album}'");
-			$callback->( @titles ? $titles[ _seedIndex(0, $#titles) ] : undef );
-		},
-		sub { $callback->(undef) },
-		{ timeout => 15 },
-	)->get($url);
+		$log->debug("Album Mix: album.getInfo gave " . scalar(@titles) . " tracks for '$seed->{album}'");
+		$callback->( @titles ? $titles[ _seedIndex(0, $#titles) ] : undef );
+	});
 }
 
 # "Continue as Album Mix": keep the current queue; when it is about to run
@@ -782,10 +773,19 @@ sub onPlaylistChange {
 	my $lookahead   = _pref($client, 'lookahead') || DEFAULT_LOOKAHEAD;
 	my $remaining   = $playlistLen - $songIndex - 1;
 
-	$log->debug("Album Mix: song $songIndex of $playlistLen, $remaining remaining");
+	# Halfway through the last queued album is time to look for the next
+	# one, so it is ready well before the queue runs out (once per album)
+	my ( $start, $end ) = _lastAlbumRange($client, $state, $playlistLen);
+	my $halfway = $songIndex >= $start && $songIndex <= $end
+		&& ($songIndex - $start + 1) * 2 >= ($end - $start + 1)
+		&& ( !defined $state->{lookedUpForStart} || $state->{lookedUpForStart} != $start );
 
-	if ( $remaining <= $lookahead ) {
-		$log->info("Album Mix: $remaining tracks left, finding next similar album");
+	$log->debug("Album Mix: song $songIndex of $playlistLen, $remaining remaining, last album at [$start..$end]");
+
+	if ( $halfway || $remaining <= $lookahead ) {
+		$log->info("Album Mix: " . ($halfway ? "halfway through the album" : "$remaining tracks left")
+			. ", finding next similar album");
+		$state->{lookedUpForStart} = $start;
 		_findNextAlbum($client, $clientId);
 	}
 }
@@ -852,7 +852,7 @@ sub _findNextAlbum {
 
 	if ( $seed && $seed->{artistOnly} ) {
 		$state->{lastSeed} = undef;
-		return _findNextAlbumByArtist($client, $clientId, $seed->{artistOnly}, $apiKey);
+		return _findNextAlbumByArtist($client, $clientId, $seed->{artistOnly}, $apiKey, $state->{lookupId});
 	}
 
 	# --- The seed track: given, or a track from the last queued album ---
@@ -862,6 +862,7 @@ sub _findNextAlbum {
 		$log->info("Album Mix: Seed track '$seedTrack' by '$seedArtist'");
 		$state->{lastSeed} = { title => $seedTrack, artist => $seedArtist };
 
+		my $lookupId = $state->{lookupId};
 		_getSimilarTracks($client, $clientId, $seedArtist, $seedTrack, $apiKey, sub {
 			my $similarTracks = shift;
 
@@ -869,16 +870,16 @@ sub _findNextAlbum {
 
 			if ( $similarTracks && @$similarTracks ) {
 				# Try to pick an album from these similar tracks
-				_pickAlbumFromSimilarTracks($client, $clientId, $similarTracks, $apiKey);
+				_pickAlbumFromSimilarTracks($client, $clientId, $similarTracks, $apiKey, $lookupId);
 			} else {
 				$log->info("Album Mix: No similar tracks found, falling back to artist similarity");
-				_findNextAlbumByArtist($client, $clientId, $state->{seedArtist}, $apiKey);
+				_findNextAlbumByArtist($client, $clientId, $state->{seedArtist}, $apiKey, $lookupId);
 			}
 		});
 	} else {
 		# Can't determine current track — fall back to artist similarity
 		$log->info("Album Mix: Could not extract seed track, falling back to artist similarity");
-		_findNextAlbumByArtist($client, $clientId, $state->{seedArtist}, $apiKey);
+		_findNextAlbumByArtist($client, $clientId, $state->{seedArtist}, $apiKey, $state->{lookupId});
 	}
 }
 
@@ -1013,57 +1014,34 @@ sub _trackDetails {
 sub _getSimilarTracks {
 	my ( $client, $clientId, $artist, $track, $apiKey, $callback ) = @_;
 
-	my $url = LASTFM_API_BASE . '?method=track.getSimilar'
-		. '&artist=' . uri_escape_utf8($artist)
-		. '&track='  . uri_escape_utf8($track)
-		. '&limit='  . MAX_SIMILAR_TRACKS
-		. '&autocorrect=1'
-		. '&api_key=' . $apiKey
-		. '&format=json';
-
 	$log->debug("Album Mix: Fetching similar tracks for '$track' by '$artist'");
 
-	Slim::Networking::SimpleAsyncHTTP->new(
-		sub {
-			my $http   = shift;
-			my $result = eval { decode_json($http->content) };
+	_lastfm('track.getSimilar', {
+		artist      => $artist,
+		track       => $track,
+		limit       => MAX_SIMILAR_TRACKS,
+		autocorrect => 1,
+	}, sub {
+		my $result = shift;
 
-			if ( $@ || !$result ) {
-				$log->warn("Album Mix: JSON parse error: $@");
-				$callback->([]);
-				return;
-			}
-			if ( $result->{error} ) {
-				$log->warn("Album Mix: Last.fm error: $result->{message}");
-				$callback->([]);
-				return;
-			}
+		my @tracks;
+		my $similar = $result && ref $result->{similartracks} eq 'HASH' ? $result->{similartracks}->{track} : [];
+		$similar = [$similar] if ref $similar eq 'HASH';
 
-			my @tracks;
-			my $similar = $result->{similartracks}->{track} || [];
-			$similar = [$similar] if ref $similar eq 'HASH';
+		for my $t ( @{ $similar || [] } ) {
+			next unless ref $t eq 'HASH' && $t->{name} && $t->{artist} && $t->{artist}->{name};
 
-			for my $t ( @$similar ) {
-				next unless $t->{name} && $t->{artist} && $t->{artist}->{name};
+			push @tracks, {
+				title  => $t->{name},
+				artist => $t->{artist}->{name},
+				match  => $t->{match} || 0,
+				mbid   => $t->{mbid}  || '',
+			};
+		}
 
-				push @tracks, {
-					title  => $t->{name},
-					artist => $t->{artist}->{name},
-					match  => $t->{match} || 0,
-					mbid   => $t->{mbid}  || '',
-				};
-			}
-
-			$log->info("Album Mix: Found " . scalar(@tracks) . " similar tracks");
-			$callback->(\@tracks);
-		},
-		sub {
-			my $http = shift;
-			$log->warn("Album Mix: HTTP error: " . ($http->error || 'unknown'));
-			$callback->([]);
-		},
-		{ timeout => 15 },
-	)->get($url);
+		$log->info("Album Mix: Found " . scalar(@tracks) . " similar tracks");
+		$callback->(\@tracks);
+	});
 }
 
 # Walk the similar tracks and queue the first album that passes the
@@ -1074,28 +1052,39 @@ sub _getSimilarTracks {
 # are shuffled, with closer matches more likely to come first, so the
 # same seed doesn't always lead to the same album.
 sub _pickAlbumFromSimilarTracks {
-	my ( $client, $clientId, $similarTracks, $apiKey ) = @_;
+	my ( $client, $clientId, $similarTracks, $apiKey, $lookupId ) = @_;
 
 	my $ordered = _varietyOrder($client, $similarTracks, sub { $_[0]->{match} });
 
-	_tryNextSimilarTrack($client, $clientId, $ordered, 0, $apiKey);
+	_tryNextSimilarTrack($client, $clientId, $ordered, 0, $apiKey, $lookupId);
+}
+
+# True if $lookupId (when given) is a lookup that timed out and has been
+# replaced by a newer one: its search should stop rather than keep asking
+# Last.fm for albums it may no longer queue
+sub _staleLookup {
+	my ( $state, $lookupId ) = @_;
+	return 0 unless defined $lookupId && $lookupId != $state->{lookupId};
+	$log->debug("Album Mix: Dropping a timed-out lookup");
+	return 1;
 }
 
 sub _tryNextSimilarTrack {
-	my ( $client, $clientId, $tracks, $index, $apiKey ) = @_;
+	my ( $client, $clientId, $tracks, $index, $apiKey, $lookupId ) = @_;
 
 	my $state = $playerState{$clientId};
 	return unless $state && $state->{active};
+	return if _staleLookup($state, $lookupId);
 
 	if ( $index >= scalar @$tracks ) {
 		# Exhausted all similar tracks — fall back to artist similarity
 		$log->info("Album Mix: No suitable album from similar tracks, falling back to artist similarity");
-		_findNextAlbumByArtist($client, $clientId, $state->{seedArtist}, $apiKey);
+		_findNextAlbumByArtist($client, $clientId, $state->{seedArtist}, $apiKey, $lookupId);
 		return;
 	}
 
 	my $track = $tracks->[$index];
-	my $next  = sub { _tryNextSimilarTrack($client, $clientId, $tracks, $index + 1, $apiKey) };
+	my $next  = sub { _tryNextSimilarTrack($client, $clientId, $tracks, $index + 1, $apiKey, $lookupId) };
 
 	$log->debug("Album Mix: Checking similar track '$track->{title}' by '$track->{artist}' (match: $track->{match})");
 
@@ -1110,6 +1099,7 @@ sub _tryNextSimilarTrack {
 		my $albumName = shift;
 
 		return unless _isCurrent($clientId, $state);
+		return if _staleLookup($state, $lookupId);
 
 		unless ( $albumName ) {
 			# No album info for this track — try the next similar track
@@ -1131,6 +1121,10 @@ sub _tryNextSimilarTrack {
 			seed       => $state->{lastSeed},
 		}, $next);
 	});
+
+	# Ask Last.fm about the next few candidates already, so their answers
+	# are ready (cached) by the time they are needed
+	_prefetchTrackInfo($clientId, $tracks, $index + 1);
 }
 
 # No album could be found. If nothing of the mix has played yet (seed not
@@ -1179,6 +1173,23 @@ sub _whyPopup {
 		return sprintf(cstring($client, 'PLUGIN_ALBUM_MIX_QUEUED_LIKE_ARTIST'), $what, $why->{seedArtist});
 	}
 	return sprintf(cstring($client, 'PLUGIN_ALBUM_MIX_QUEUED'), $what);
+}
+
+# Start track.getInfo requests for the next PREFETCH_TRACKS candidates
+# (skipping artists on cooldown, which won't be looked at anyway). Answers
+# go into the Last.fm cache; requests already cached or on their way are
+# not repeated.
+sub _prefetchTrackInfo {
+	my ( $clientId, $tracks, $from ) = @_;
+
+	my $todo = PREFETCH_TRACKS;
+	for my $i ( $from .. $#$tracks ) {
+		last unless $todo > 0;
+		my $t = $tracks->[$i];
+		next if _isArtistOnCooldown($clientId, $t->{artist});
+		_lastfm('track.getInfo', _trackInfoParams($t->{artist}, $t->{title}), sub {});
+		$todo--;
+	}
 }
 
 # Why a candidate album should not be queued, or undef if it's fine.
@@ -1311,38 +1322,227 @@ sub _queueCandidate {
 sub _getTrackAlbum {
 	my ( $client, $clientId, $artist, $track, $apiKey, $callback ) = @_;
 
-	my $url = LASTFM_API_BASE . '?method=track.getInfo'
-		. '&artist=' . uri_escape_utf8($artist)
-		. '&track='  . uri_escape_utf8($track)
-		. '&autocorrect=1'
-		. '&api_key=' . $apiKey
-		. '&format=json';
+	_lastfm('track.getInfo', _trackInfoParams($artist, $track), sub {
+		my $result = shift;
+
+		my $albumName;
+		if ( $result && ref $result->{track} eq 'HASH' && ref $result->{track}->{album} eq 'HASH' ) {
+			$albumName = $result->{track}->{album}->{title};
+		}
+
+		if ( $albumName ) {
+			$log->debug("Album Mix: track.getInfo says '$track' is on album '$albumName'");
+		} else {
+			$log->debug("Album Mix: track.getInfo returned no album for '$track'");
+		}
+
+		$callback->($albumName);
+	});
+}
+
+# The track.getInfo question for a track (also used to fetch ahead, so it
+# must be exactly the same to be answered from the cache)
+sub _trackInfoParams {
+	my ( $artist, $track ) = @_;
+	return { artist => $artist, track => $track, autocorrect => 1 };
+}
+
+# ============================================================
+# Last.fm requests: one helper with a cache and retries
+# ============================================================
+
+# How long an answer is reused, per Last.fm method (seconds)
+my %LASTFM_CACHE_TTL = (
+	'track.getSimilar'    => 86400,
+	'track.getInfo'       => 7 * 86400,
+	'artist.getSimilar'   => 86400,
+	'artist.getTopAlbums' => 86400,
+	'album.getInfo'       => 7 * 86400,
+);
+
+# Last.fm error codes that mean "try again later": 8 operation failed,
+# 11 service offline, 16 temporarily unavailable, 29 rate limit exceeded
+my %LASTFM_RETRY_ERRORS = map { $_ => 1 } ( 8, 11, 16, 29 );
+
+# Only the parts of each answer the plugin uses are kept (a full
+# track.getSimilar answer is about 200 KB in memory, the trimmed one a
+# fraction of that). The shape stays the same, always with lists.
+sub _lfList {
+	my ( $h, $outer, $inner ) = @_;
+	my $l = ref $h eq 'HASH' && ref $h->{$outer} eq 'HASH' ? $h->{$outer}->{$inner} : undef;
+	$l = [$l] if ref $l eq 'HASH';
+	return [ grep { ref $_ eq 'HASH' } @{ ref $l eq 'ARRAY' ? $l : [] } ];
+}
+
+my %LASTFM_TRIM = (
+	'track.getSimilar' => sub {
+		return { similartracks => { track => [ map { {
+			name   => $_->{name},
+			match  => $_->{match},
+			mbid   => $_->{mbid},
+			artist => ref $_->{artist} eq 'HASH' ? { name => $_->{artist}->{name} } : undef,
+		} } @{ _lfList($_[0], 'similartracks', 'track') } ] } };
+	},
+	'track.getInfo' => sub {
+		my $t = $_[0]->{track};
+		my $album = ref $t eq 'HASH' && ref $t->{album} eq 'HASH' ? $t->{album}->{title} : undef;
+		return { track => ( defined $album ? { album => { title => $album } } : {} ) };
+	},
+	'artist.getSimilar' => sub {
+		return { similarartists => { artist => [ map { {
+			name => $_->{name}, match => $_->{match}, mbid => $_->{mbid},
+		} } @{ _lfList($_[0], 'similarartists', 'artist') } ] } };
+	},
+	'artist.getTopAlbums' => sub {
+		return { topalbums => { album => [ map { {
+			name => $_->{name}, mbid => $_->{mbid}, playcount => $_->{playcount},
+		} } @{ _lfList($_[0], 'topalbums', 'album') } ] } };
+	},
+	'album.getInfo' => sub {
+		my $tracks = ref $_[0]->{album} eq 'HASH' && ref $_[0]->{album}->{tracks} eq 'HASH'
+			? _lfList($_[0]->{album}, 'tracks', 'track') : [];
+		return { album => { tracks => { track => [ map { { name => $_->{name} } } @$tracks ] } } };
+	},
+);
+
+my %lastfmCache;     # question => { time, result }
+my %lastfmPending;   # question => [ callbacks waiting for the answer ]
+
+# Ask Last.fm. $callback->($answer) gets the decoded answer (a hash, which
+# may be an error answer such as "track not found"), or undef if Last.fm
+# couldn't be reached or no API key is set.
+#  - Answers are kept for a while (%LASTFM_CACHE_TTL), so asking the same
+#    question again soon costs nothing.
+#  - The same question asked while it is already on its way waits for that
+#    answer rather than being sent twice.
+#  - Temporary failures (network, Last.fm busy or offline) are retried
+#    twice, after LASTFM_RETRY_DELAYS seconds.
+sub _lastfm {
+	my ( $method, $params, $callback ) = @_;
+
+	my $apiKey = $prefs->get('lastfm_api_key');
+	return $callback->(undef) unless $apiKey;
+
+	my $query = join('&', map { "$_=" . uri_escape_utf8($params->{$_} // '') } sort keys %$params);
+	my $key   = "$method?$query";   # the question, without the API key
+
+	if ( my $hit = $lastfmCache{$key} ) {
+		if ( time() - $hit->{time} < ($LASTFM_CACHE_TTL{$method} || 3600) ) {
+			$log->debug("Album Mix: Last.fm $method answered from the cache");
+
+			# Answer a moment later, as a real request would, rather than
+			# inside the caller: a long run of cached answers would otherwise
+			# nest ever deeper
+			my $result = $hit->{result};
+			Slim::Utils::Timers::setTimer(undef, time(), sub { _lastfmCall($method, $callback, $result) });
+			return;
+		}
+		delete $lastfmCache{$key};
+	}
+
+	if ( $lastfmPending{$key} ) {
+		push @{ $lastfmPending{$key} }, $callback;
+		return;
+	}
+	$lastfmPending{$key} = [ $callback ];
+
+	_lastfmFetch($method, $key, LASTFM_API_BASE . "?method=$method&$query&api_key=$apiKey&format=json", 0);
+}
+
+# Call one waiting caller. If it fails, the others still get the answer.
+sub _lastfmCall {
+	my ( $method, $callback, $result ) = @_;
+	eval { $callback->($result); 1 }
+		or $log->error("Album Mix: Handling the Last.fm $method answer failed: $@");
+}
+
+sub _lastfmFetch {
+	my ( $method, $key, $url, $attempt ) = @_;
+
+	my $finish = sub {
+		my ( $result, $keep ) = @_;
+
+		if ( $keep ) {
+			$lastfmCache{$key} = { time => time(), result => $result };
+
+			# Keep the cache to a sensible size: drop the oldest tenth
+			if ( keys %lastfmCache > LASTFM_CACHE_MAX ) {
+				my @oldest = sort { $lastfmCache{$a}->{time} <=> $lastfmCache{$b}->{time} } keys %lastfmCache;
+				delete @lastfmCache{ @oldest[ 0 .. int(LASTFM_CACHE_MAX / 10) ] };
+			}
+		}
+
+		my $waiting = delete $lastfmPending{$key} || [];
+		_lastfmCall($method, $_, $result) for @$waiting;
+	};
+
+	my $retry = sub {
+		my $why    = shift;
+		my @delays = LASTFM_RETRY_DELAYS;
+
+		if ( $attempt < @delays ) {
+			$log->info("Album Mix: Last.fm $method failed ($why), trying again in $delays[$attempt]s");
+			Slim::Utils::Timers::setTimer(undef, time() + $delays[$attempt], sub {
+				_lastfmFetch($method, $key, $url, $attempt + 1);
+			});
+			return;
+		}
+
+		$log->warn("Album Mix: Last.fm $method failed ($why), giving up");
+		$finish->(undef, 0);
+	};
+
+	# A decoded Last.fm answer, which may be an error answer
+	my $answer = sub {
+		my $result = shift;
+
+		if ( my $code = $result->{error} ) {
+			my $why = "error $code: " . ($result->{message} // '');
+			return $retry->($why) if $LASTFM_RETRY_ERRORS{$code};
+
+			# A definite answer such as "track not found" (6): keep it, so it
+			# isn't asked again. Others (e.g. a bad API key) are not kept.
+			if ( $code == 6 ) {
+				$log->info("Album Mix: Last.fm $method: $why");
+			} else {
+				$log->warn("Album Mix: Last.fm $method: $why");
+			}
+			return $finish->({ error => $code, message => $result->{message} }, $code == 6);
+		}
+
+		my $trim = $LASTFM_TRIM{$method};
+		$finish->($trim ? $trim->($result) : $result, 1);
+	};
 
 	Slim::Networking::SimpleAsyncHTTP->new(
 		sub {
 			my $http   = shift;
 			my $result = eval { decode_json($http->content) };
 
-			if ( $@ || !$result || $result->{error} ) {
-				$callback->(undef);
-				return;
-			}
-
-			my $albumName = undef;
-			if ( $result->{track} && $result->{track}->{album} ) {
-				$albumName = $result->{track}->{album}->{title};
-			}
-
-			if ( $albumName ) {
-				$log->debug("Album Mix: track.getInfo says '$track' is on album '$albumName'");
-			} else {
-				$log->debug("Album Mix: track.getInfo returned no album for '$track'");
-			}
-
-			$callback->($albumName);
+			return $retry->('unreadable answer') if $@ || ref $result ne 'HASH';
+			$answer->($result);
 		},
 		sub {
-			$callback->(undef);
+			my ( $http, $error, $response ) = @_;
+			$error ||= ( eval { $http->error } || 'unknown' );
+
+			# Last.fm sends some errors with an HTTP error status (e.g. 403 for
+			# a bad API key). If the body with the reason was read, use it
+			# (current LMS versions don't read it; the status is used then)
+			my $body   = blessed($response) && $response->can('content') ? $response->content : undef;
+			my $result = $body ? eval { decode_json($body) } : undef;
+			return $answer->($result) if ref $result eq 'HASH' && $result->{error};
+
+			# Other client errors won't get better by asking again; timeouts,
+			# server errors (5xx) and "too many requests" (429) may
+			my $status = blessed($response) && $response->can('code') ? $response->code : undef;
+			($status) = $error =~ /^\s*(\d{3})\b/ unless $status;
+			if ( $status && $status =~ /^4/ && $status != 408 && $status != 429 ) {
+				$log->warn("Album Mix: Last.fm $method failed ($error)");
+				return $finish->(undef, 0);
+			}
+
+			$retry->("network error: $error");
 		},
 		{ timeout => 15 },
 	)->get($url);
@@ -1353,10 +1553,11 @@ sub _getTrackAlbum {
 # ============================================================
 
 sub _findNextAlbumByArtist {
-	my ( $client, $clientId, $seedArtist, $apiKey ) = @_;
+	my ( $client, $clientId, $seedArtist, $apiKey, $lookupId ) = @_;
 
 	my $state = $playerState{$clientId};
 	return unless $state && $state->{active};
+	return if _staleLookup($state, $lookupId);
 
 	$log->info("Album Mix: Artist fallback — finding artists similar to '$seedArtist'");
 
@@ -1364,6 +1565,7 @@ sub _findNextAlbumByArtist {
 		my $similarArtists = shift;
 
 		return unless _isCurrent($clientId, $state);
+		return if _staleLookup($state, $lookupId);
 
 		unless ( $similarArtists && @$similarArtists ) {
 			$log->warn("Album Mix: No similar artists found for '$seedArtist'");
@@ -1383,64 +1585,40 @@ sub _findNextAlbumByArtist {
 			mbid  => '',
 		};
 
-		_tryNextArtist($client, $clientId, $similarArtists, 0, $apiKey);
+		_tryNextArtist($client, $clientId, $similarArtists, 0, $apiKey, $lookupId);
 	});
 }
 
 sub _getSimilarArtists {
 	my ( $client, $clientId, $artist, $apiKey, $callback ) = @_;
 
-	my $url = LASTFM_API_BASE . '?method=artist.getSimilar'
-		. '&artist=' . uri_escape_utf8($artist)
-		. '&limit='  . MAX_SIMILAR_ARTISTS
-		. '&api_key=' . $apiKey
-		. '&format=json';
+	_lastfm('artist.getSimilar', { artist => $artist, limit => MAX_SIMILAR_ARTISTS }, sub {
+		my $result = shift;
 
-	Slim::Networking::SimpleAsyncHTTP->new(
-		sub {
-			my $http   = shift;
-			my $result = eval { decode_json($http->content) };
+		my @artists;
+		my $similar = $result && ref $result->{similarartists} eq 'HASH' ? $result->{similarartists}->{artist} : [];
+		$similar = [$similar] if ref $similar eq 'HASH';
 
-			if ( $@ || !$result ) {
-				$log->warn("Album Mix: JSON parse error: $@");
-				$callback->([]);
-				return;
-			}
-			if ( $result->{error} ) {
-				$log->warn("Album Mix: Last.fm error: $result->{message}");
-				$callback->([]);
-				return;
-			}
+		for my $a ( @{ $similar || [] } ) {
+			next unless ref $a eq 'HASH' && $a->{name};
+			push @artists, {
+				name  => $a->{name},
+				match => $a->{match} || 0,
+				mbid  => $a->{mbid}  || '',
+			};
+		}
 
-			my @artists;
-			my $similar = $result->{similarartists}->{artist} || [];
-			$similar = [$similar] if ref $similar eq 'HASH';
-
-			for my $a ( @$similar ) {
-				push @artists, {
-					name  => $a->{name},
-					match => $a->{match} || 0,
-					mbid  => $a->{mbid}  || '',
-				};
-			}
-
-			$log->info("Album Mix: Found " . scalar(@artists) . " similar artists to '$artist'");
-			$callback->(\@artists);
-		},
-		sub {
-			my $http = shift;
-			$log->warn("Album Mix: HTTP error: " . ($http->error || 'unknown'));
-			$callback->([]);
-		},
-		{ timeout => 15 },
-	)->get($url);
+		$log->info("Album Mix: Found " . scalar(@artists) . " similar artists to '$artist'");
+		$callback->(\@artists);
+	});
 }
 
 sub _tryNextArtist {
-	my ( $client, $clientId, $artists, $index, $apiKey ) = @_;
+	my ( $client, $clientId, $artists, $index, $apiKey, $lookupId ) = @_;
 
 	my $state = $playerState{$clientId};
 	return unless $state && $state->{active};
+	return if _staleLookup($state, $lookupId);
 
 	if ( $index >= scalar @$artists ) {
 		$log->warn("Album Mix: Exhausted all similar artists — no new album found");
@@ -1455,7 +1633,7 @@ sub _tryNextArtist {
 	# Artist cooldown — skip entire artist if picked too recently
 	if ( _isArtistOnCooldown($clientId, $artist->{name}) ) {
 		$log->debug("Album Mix: '$artist->{name}' on cooldown, skipping (artist fallback)");
-		_tryNextArtist($client, $clientId, $artists, $index + 1, $apiKey);
+		_tryNextArtist($client, $clientId, $artists, $index + 1, $apiKey, $lookupId);
 		return;
 	}
 
@@ -1463,6 +1641,7 @@ sub _tryNextArtist {
 		my $albums = shift;
 
 		return unless _isCurrent($clientId, $state);
+		return if _staleLookup($state, $lookupId);
 
 		# The artist's top albums minus any that fail the checks, in random
 		# order (see Variety) so it isn't always the most popular album
@@ -1472,20 +1651,21 @@ sub _tryNextArtist {
 
 		my $ordered = _varietyOrder($client, \@candidates, sub { 1 });
 
-		_tryArtistAlbum($client, $clientId, $artists, $index, $ordered, 0, $apiKey);
+		_tryArtistAlbum($client, $clientId, $artists, $index, $ordered, 0, $apiKey, $lookupId);
 	});
 }
 
 # Try this artist's candidate albums in turn; when none can be queued,
 # move on to the next similar artist.
 sub _tryArtistAlbum {
-	my ( $client, $clientId, $artists, $artistIndex, $candidates, $albumIndex, $apiKey ) = @_;
+	my ( $client, $clientId, $artists, $artistIndex, $candidates, $albumIndex, $apiKey, $lookupId ) = @_;
 
 	my $state = $playerState{$clientId};
 	return unless $state && $state->{active};
+	return if _staleLookup($state, $lookupId);
 
 	if ( $albumIndex >= scalar @$candidates ) {
-		_tryNextArtist($client, $clientId, $artists, $artistIndex + 1, $apiKey);
+		_tryNextArtist($client, $clientId, $artists, $artistIndex + 1, $apiKey, $lookupId);
 		return;
 	}
 
@@ -1497,61 +1677,35 @@ sub _tryArtistAlbum {
 		seedArtist => $artists->[0]->{name},
 		match      => $artists->[$artistIndex]->{match},
 	}, sub {
-		_tryArtistAlbum($client, $clientId, $artists, $artistIndex, $candidates, $albumIndex + 1, $apiKey);
+		_tryArtistAlbum($client, $clientId, $artists, $artistIndex, $candidates, $albumIndex + 1, $apiKey, $lookupId);
 	});
 }
 
 sub _getTopAlbums {
 	my ( $client, $clientId, $artist, $apiKey, $callback ) = @_;
 
-	my $url = LASTFM_API_BASE . '?method=artist.getTopAlbums'
-		. '&artist=' . uri_escape_utf8($artist)
-		. '&limit='  . MAX_TOP_ALBUMS
-		. '&api_key=' . $apiKey
-		. '&format=json';
+	_lastfm('artist.getTopAlbums', { artist => $artist, limit => MAX_TOP_ALBUMS }, sub {
+		my $result = shift;
 
-	Slim::Networking::SimpleAsyncHTTP->new(
-		sub {
-			my $http   = shift;
-			my $result = eval { decode_json($http->content) };
+		my @albums;
+		my $topAlbums = $result && ref $result->{topalbums} eq 'HASH' ? $result->{topalbums}->{album} : [];
+		$topAlbums = [$topAlbums] if ref $topAlbums eq 'HASH';
 
-			if ( $@ || !$result ) {
-				$log->warn("Album Mix: JSON parse error for top albums: $@");
-				$callback->([]);
-				return;
-			}
-			if ( $result->{error} ) {
-				$log->warn("Album Mix: Last.fm error: $result->{message}");
-				$callback->([]);
-				return;
-			}
+		for my $a ( @{ $topAlbums || [] } ) {
+			next unless ref $a eq 'HASH' && $a->{name};
+			next if $a->{name} =~ /^\s*$/;
+			next if lc($a->{name}) eq '(null)';
 
-			my @albums;
-			my $topAlbums = $result->{topalbums}->{album} || [];
-			$topAlbums = [$topAlbums] if ref $topAlbums eq 'HASH';
+			push @albums, {
+				name      => $a->{name},
+				mbid      => $a->{mbid}      || '',
+				playcount => $a->{playcount} || 0,
+			};
+		}
 
-			for my $a ( @$topAlbums ) {
-				next unless $a->{name};
-				next if $a->{name} =~ /^\s*$/;
-				next if lc($a->{name}) eq '(null)';
-
-				push @albums, {
-					name      => $a->{name},
-					mbid      => $a->{mbid}      || '',
-					playcount => $a->{playcount}  || 0,
-				};
-			}
-
-			$log->debug("Album Mix: Found " . scalar(@albums) . " top albums for '$artist'");
-			$callback->(\@albums);
-		},
-		sub {
-			my $http = shift;
-			$log->warn("Album Mix: HTTP error fetching top albums: " . ($http->error || 'unknown'));
-			$callback->([]);
-		},
-		{ timeout => 15 },
-	)->get($url);
+		$log->debug("Album Mix: Found " . scalar(@albums) . " top albums for '$artist'");
+		$callback->(\@albums);
+	});
 }
 
 # ============================================================
