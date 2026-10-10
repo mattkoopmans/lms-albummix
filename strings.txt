@@ -34,18 +34,6 @@ PLUGIN_ALBUM_MIX_MAX_HISTORY
 PLUGIN_ALBUM_MIX_MAX_HISTORY_DESC
 	EN	Maximum number of albums remembered within one mix to avoid repeats (see also Don't Repeat Albums For).
 
-PLUGIN_ALBUM_MIX_PREFER_LOCAL
-	EN	Prefer Local Library
-
-PLUGIN_ALBUM_MIX_PREFER_LOCAL_DESC
-	EN	When enabled, the plugin searches your local library first before trying online music services. Ignored when Discovery Mode is on.
-
-PLUGIN_ALBUM_MIX_DISCOVER_NEW
-	EN	Discovery Mode
-
-PLUGIN_ALBUM_MIX_DISCOVER_NEW_DESC
-	EN	When enabled, the mix only queues albums that are not in your local library, played from your online service (TIDAL or Spotify). Great for discovering new music you don't already own. The album you start the mix from is always played.
-
 PLUGIN_ALBUM_MIX_ARTIST_COOLDOWN
 	EN	Artist Cooldown (albums)
 
@@ -101,13 +89,61 @@ PLUGIN_ALBUM_MIX_REPEAT_DAYS
 	EN	Don't Repeat Albums For (days)
 
 PLUGIN_ALBUM_MIX_REPEAT_DAYS_DESC
-	EN	An album queued by any mix, on any player, won't be queued again for this many days. Remembered across mixes and server restarts. 0 turns this off. Default is 30.
+	EN	An album queued by a mix won't be queued again for this many days. Remembered across mixes and server restarts, for all players together or for each player separately (see Saved History). 0 turns this off. Default is 30.
 
 PLUGIN_ALBUM_MIX_CLEAR_HISTORY
 	EN	Clear Saved History
 
 PLUGIN_ALBUM_MIX_CLEAR_HISTORY_DESC
-	EN	Tick and save to forget which albums have been played, so they can be queued again straight away.
+	EN	Tick and save to forget which albums have been played, so they can be queued again straight away. On this page it clears the shared history; a player's own history is cleared on that player's settings page.
 
 PLUGIN_ALBUM_MIX_ALBUMS_REMEMBERED
 	EN	Albums remembered
+
+PLUGIN_ALBUM_MIX_DEFAULTS_NOTE
+	EN	The settings below are the defaults for all players. Each player can use its own settings instead: Settings > Player > Album Mix.
+
+PLUGIN_ALBUM_MIX_SOURCE
+	EN	Source
+
+PLUGIN_ALBUM_MIX_SOURCE_DESC
+	EN	Where the mix looks for albums. "Online only" only queues albums that are not in your local library (discovery). The album you start the mix from is always played, wherever it comes from.
+
+PLUGIN_ALBUM_MIX_SOURCE_LIBRARY_ONLY
+	EN	Library only
+
+PLUGIN_ALBUM_MIX_SOURCE_LIBRARY_FIRST
+	EN	Library first, then online
+
+PLUGIN_ALBUM_MIX_SOURCE_ONLINE_FIRST
+	EN	Online first, then library
+
+PLUGIN_ALBUM_MIX_SOURCE_ONLINE_ONLY
+	EN	Online only (albums you don't own)
+
+PLUGIN_ALBUM_MIX_HISTORY_SCOPE
+	EN	Saved History
+
+PLUGIN_ALBUM_MIX_HISTORY_SCOPE_DESC
+	EN	Whether all players share one history of played albums (an album played in one room isn't repeated in another), or each player keeps its own. Synced players use the history of the main player.
+
+PLUGIN_ALBUM_MIX_HISTORY_SHARED
+	EN	Shared by all players
+
+PLUGIN_ALBUM_MIX_HISTORY_PLAYER
+	EN	Separate for each player
+
+PLUGIN_ALBUM_MIX_PLAYER_DESC
+	EN	Album Mix settings for this player. The Last.fm API key, album history size, repeat days and saved history are set for the whole server under Settings > Advanced > Album Mix.
+
+PLUGIN_ALBUM_MIX_PLAYER_SYNCED
+	EN	This player is synced: while it is, the settings of the main player in the group are used.
+
+PLUGIN_ALBUM_MIX_OWN_SETTINGS
+	EN	Use Own Settings for This Player
+
+PLUGIN_ALBUM_MIX_OWN_SETTINGS_DESC
+	EN	When ticked, this player uses the settings below. When not ticked, it uses the server defaults under Settings > Advanced > Album Mix, and the values below are kept but not used.
+
+PLUGIN_ALBUM_MIX_CLEAR_PLAYER_HISTORY_DESC
+	EN	Tick and save to forget which albums this player has played, so they can be queued again straight away.

@@ -22,8 +22,8 @@ A [Lyrion Music Server](https://lyrion.org/) plugin that creates continuous, dis
    - its artist is on cooldown (see **Artist Cooldown**)
    - its title marks it as a compilation, live album, single, EP or remix release (see the **Skip** settings)
    - it was already tried in this mix and couldn't be queued
-   - Discovery Mode is on and the album is already in your local library
-6. **Queue** — the plugin looks for the album in your library and/or online service (see **Settings**). Search results must match both the artist and the album title, so a different album by the same artist is never queued. Differences such as "(Deluxe Edition)", "- 2011 Remaster", "Remastered", accents ("Björk"/"Bjork"), "&"/"and" and "Vol."/"Volume" are ignored. Releases with fewer tracks than **Minimum Tracks per Album** are passed over where the track count is known. If the album can't be found anywhere, the plugin moves on to the next candidate.
+   - **Source** is "Online only" and the album is already in your local library
+6. **Queue** — the plugin looks for the album in your library and/or online service (see **Source**). Search results must match both the artist and the album title, so a different album by the same artist is never queued. Differences such as "(Deluxe Edition)", "- 2011 Remaster", "Remastered", accents ("Björk"/"Bjork"), "&"/"and" and "Vol."/"Volume" are ignored. Releases with fewer tracks than **Minimum Tracks per Album** are passed over where the track count is known. If the album can't be found anywhere, the plugin moves on to the next candidate.
 
 If no similar track leads to an album that can be queued, the plugin falls back to artist similarity: Last.fm `artist.getSimilar` → `artist.getTopAlbums`. The closest artists are tried in a shuffled order (see **Variety**), and each artist's top albums in random order rather than most popular first, all with the same checks.
 
@@ -72,21 +72,28 @@ LMS will then offer new versions automatically.
 
 ## Settings
 
-| Setting | Default | Description |
-|---|---|---|
-| Last.fm API Key | *(empty)* | Required. Get one free at [last.fm/api](https://www.last.fm/api/account/create) |
-| Prefer Local Library | On | Look in your local library first, then online services. Ignored when Discovery Mode is on |
-| Discovery Mode | Off | Only queue albums that are **not** in your local library, played from your online service. The album you start the mix from is always played |
-| Artist Cooldown | 5 | Number of albums that must be queued before the same artist can appear again. 0 turns it off |
-| Album History Size | 50 | Number of albums remembered within one mix to avoid repeats |
-| Queue Lookahead | 2 | Number of tracks left in the queue when the next album is looked up |
-| Variety | 10 | How many of the closest Last.fm matches to choose from at random (closer matches are more likely). 1 always takes the closest match |
-| Skip Compilations | On | Don't queue greatest hits, best-of, collections, anthologies, soundtracks, tributes and similar |
-| Skip Live Albums | On | Don't queue live albums ("Live at …", "In Concert", "Unplugged", …) |
-| Skip Singles and EPs | On | Don't queue singles, EPs or remix releases |
-| Minimum Tracks per Album | 5 | With Skip Singles and EPs on, releases with fewer tracks are skipped where the track count is known (library, TIDAL, Spotify). 0 turns it off |
-| Don't Repeat Albums For | 30 days | An album queued by any mix, on any player, isn't queued again for this many days. Remembered across mixes and server restarts. 0 turns it off |
-| Clear Saved History | — | Tick and save to forget which albums have been played. The settings page shows how many albums are remembered |
+Settings are on two pages:
+
+- **Settings → Advanced → Album Mix** — server-wide settings, and the defaults for every player
+- **Settings → Player → Album Mix** (for each player) — tick **Use Own Settings for This Player** to give that player its own values for the settings marked *per player* below. Players that don't tick it use the server defaults. Synced players use the settings of the main player in the group.
+
+| Setting | Default | Per player | Description |
+|---|---|---|---|
+| Last.fm API Key | *(empty)* | — | Required. Get one free at [last.fm/api](https://www.last.fm/api/account/create) |
+| Source | Library first | yes | Where albums come from: **Library only**, **Library first, then online**, **Online first, then library**, or **Online only** (only albums you don't own — discovery). The album you start from is always played |
+| Skip Compilations | On | yes | Don't queue greatest hits, best-of, collections, anthologies, soundtracks, tributes and similar |
+| Skip Live Albums | On | yes | Don't queue live albums ("Live at …", "In Concert", "Unplugged", …) |
+| Skip Singles and EPs | On | yes | Don't queue singles, EPs or remix releases |
+| Minimum Tracks per Album | 5 | yes | With Skip Singles and EPs on, releases with fewer tracks are skipped where the track count is known (library, TIDAL, Spotify). 0 turns it off |
+| Variety | 10 | yes | How many of the closest Last.fm matches to choose from at random (closer matches are more likely). 1 always takes the closest match |
+| Artist Cooldown | 5 | yes | Number of albums that must be queued before the same artist can appear again. 0 turns it off |
+| Queue Lookahead | 2 | yes | Number of tracks left in the queue when the next album is looked up |
+| Album History Size | 50 | — | Number of albums remembered within one mix to avoid repeats |
+| Don't Repeat Albums For | 30 days | — | An album queued by a mix isn't queued again for this many days. Remembered across mixes and server restarts. 0 turns it off |
+| Saved History | Shared by all players | — | **Shared**: an album played on one player isn't repeated on another. **Separate for each player**: each player (sync group: its main player) has its own history |
+| Clear Saved History | — | — | Tick and save to forget which albums have been played. The server page clears the shared history; a player's page clears that player's own history |
+
+When upgrading from 1.2, **Source** is set from the old **Prefer Local Library** and **Discovery Mode** settings (Discovery on → Online only; Prefer Local on → Library first; both off → Online first). The old settings are kept in step, so going back to 1.2 works; 1.2 has no "Library only", so that becomes Prefer Local Library, which in 1.2 still falls back to online services. If you change those settings in 1.2 and then upgrade again, Source is set from them again.
 
 The **Skip** filters work from album titles, so an album whose title doesn't say what it is (e.g. a live album called just "Stop Making Sense") can still get through, and once in a while a studio album whose title looks like one is skipped (e.g. "Live in Fear"). They are checked against both the title Last.fm gives and the title of the album actually found, so asking for "Rumours" can't end up queuing "Rumours (Live)".
 
@@ -113,6 +120,13 @@ Switch back to the normal URL (`.../main/repo.xml`, see **Installation**) to ret
 - Online services: TIDAL is tested. Spotify (via Spotty) is supported but untested. Qobuz and Deezer are not supported yet
 
 ## Changelog
+
+### 1.9.0 (development build towards 2.0)
+- Per-player settings: each player can use its own Source, Skip filters, Minimum Tracks, Variety, Artist Cooldown and Queue Lookahead, or the server defaults. Synced players use the main player's settings
+- New **Source** setting (Library only / Library first / Online first / Online only) replaces Prefer Local Library and Discovery Mode; set automatically from them when upgrading
+- New **Library only** option: the mix never searches online services
+- **Saved History** can be shared by all players (as before) or kept separately for each player
+- The Last.fm API key, album history size and repeat days stay server-wide
 
 ### 1.2
 - Skips compilations, live albums, singles, EPs and remix releases (each can be turned off), plus releases with too few tracks
@@ -148,6 +162,8 @@ The workflow builds the zip, attaches it to the release, checks the download, an
 - a tag on a commit that is only on `Testing` is a pre-release and updates `repo-testing.xml`
 
 Both files are on `main` (the workflow commits them there), so merging `Testing` into `main` never publishes a test version by accident. Push the branch before the tag, and pull before your next push to `main`. Don't edit the version, URL or SHA in either file by hand.
+
+Work happens on `Development`. To publish a test build, merge `Development` into `Testing` and tag there; a tag on `Development` alone is refused. Test builds towards 2.0 are numbered 1.9.0, 1.9.1, … — plain numbers, so LMS always sees them as newer than 1.2 and older than 2.0. A published tag is never reused: a fix gets the next number.
 
 To promote a tested version: merge `Testing` into `main` and push, then in the **Actions** tab run **Release** for the same tag. It reuses the zip you tested (same SHA), turns the pre-release into a normal release and updates `repo.xml`.
 

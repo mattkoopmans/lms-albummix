@@ -1,0 +1,53 @@
+[% PROCESS settings/header.html %]
+[% PROCESS plugins/AlbumMix/settings/source_select.html %]
+
+	<div class="prefDesc">[% "PLUGIN_ALBUM_MIX_PLAYER_DESC" | string %]</div>
+
+	[% IF is_synced_slave %]
+	<div class="prefDesc"><b>[% "PLUGIN_ALBUM_MIX_PLAYER_SYNCED" | string %]</b></div>
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_OWN_SETTINGS" desc="PLUGIN_ALBUM_MIX_OWN_SETTINGS_DESC" %]
+		<input type="checkbox" name="pref_own_settings" value="1" [% IF prefs.own_settings %]checked[% END %] />
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_SOURCE" desc="PLUGIN_ALBUM_MIX_SOURCE_DESC" %]
+		[% PROCESS albummix_source_select %]
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_FILTER_COMPILATIONS" desc="PLUGIN_ALBUM_MIX_FILTER_COMPILATIONS_DESC" %]
+		<input type="checkbox" name="pref_filter_compilations" value="1" [% IF prefs.filter_compilations %]checked[% END %] />
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_FILTER_LIVE" desc="PLUGIN_ALBUM_MIX_FILTER_LIVE_DESC" %]
+		<input type="checkbox" name="pref_filter_live" value="1" [% IF prefs.filter_live %]checked[% END %] />
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_FILTER_SINGLES" desc="PLUGIN_ALBUM_MIX_FILTER_SINGLES_DESC" %]
+		<input type="checkbox" name="pref_filter_singles" value="1" [% IF prefs.filter_singles %]checked[% END %] />
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_MIN_TRACKS" desc="PLUGIN_ALBUM_MIX_MIN_TRACKS_DESC" %]
+		<input type="text" class="stdedit" name="pref_min_tracks" value="[% prefs.min_tracks %]" size="5" />
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_VARIETY" desc="PLUGIN_ALBUM_MIX_VARIETY_DESC" %]
+		<input type="text" class="stdedit" name="pref_variety" value="[% prefs.variety %]" size="5" />
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_ARTIST_COOLDOWN" desc="PLUGIN_ALBUM_MIX_ARTIST_COOLDOWN_DESC" %]
+		<input type="text" class="stdedit" name="pref_artist_cooldown" value="[% prefs.artist_cooldown %]" size="5" />
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_LOOKAHEAD" desc="PLUGIN_ALBUM_MIX_LOOKAHEAD_DESC" %]
+		<input type="text" class="stdedit" name="pref_lookahead" value="[% prefs.lookahead %]" size="5" />
+	[% END %]
+
+	[% IF history_scope == 'player' %]
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_CLEAR_HISTORY" desc="PLUGIN_ALBUM_MIX_CLEAR_PLAYER_HISTORY_DESC" %]
+		<input type="checkbox" name="clear_history" value="1" />
+		[% "PLUGIN_ALBUM_MIX_ALBUMS_REMEMBERED" | string %]: [% played_count %]
+	[% END %]
+	[% END %]
+
+[% PROCESS settings/footer.html %]

@@ -54,6 +54,24 @@ my %RELEASE_TYPE_PATTERNS = (
 	}x,
 );
 
+# Settings that can be set per player. Every other setting (Last.fm API
+# key, album history size, repeat days, history scope) is server-wide.
+# 'bool' settings are checkboxes (unticked = off); 'value' settings fall
+# back to the server default when the player has no value of its own.
+my %PLAYER_PREFS = (
+	source              => 'value',
+	filter_compilations => 'bool',
+	filter_live         => 'bool',
+	filter_singles      => 'bool',
+	min_tracks          => 'value',
+	variety             => 'value',
+	artist_cooldown     => 'value',
+	lookahead           => 'value',
+);
+
+# Where to look for albums (the Source setting)
+my %SOURCES = map { $_ => 1 } qw(library_only library_first online_first online_only);
+
 my $log = Slim::Utils::Log->addLogCategory({
 	'category'     => 'plugin.albummix',
 	'defaultLevel' => 'WARN',
@@ -84,18 +102,45 @@ sub initPlugin {
 		variety           => DEFAULT_VARIETY,
 		repeat_days       => DEFAULT_REPEAT_DAYS,
 		played_albums     => {},   # saved history: album key => time it was last queued
+		history_scope     => 'shared',   # 'shared' = one saved history for all players, 'player' = one per player
 	});
+
+	# Source replaces Prefer Local Library + Discovery Mode (1.9.0). On the
+	# first start after upgrading, it is set from those two settings, which
+	# are kept (and kept in step, see Settings.pm) so going back to 1.2
+	# still works.
+	# If 1.2 was used again in between and its settings were changed there,
+	# Source is set from them again.
+	my $legacy = _legacyPrefsKey();
+	if ( !$SOURCES{ $prefs->get('source') // '' }
+		|| ( defined $prefs->get('legacy_synced') && $prefs->get('legacy_synced') ne $legacy ) ) {
+		my $source = $prefs->get('discover_new') ? 'online_only'
+			: $prefs->get('prefer_local')        ? 'library_first'
+			:                                      'online_first';
+		$prefs->set('source', $source);
+		$prefs->set('legacy_synced', $legacy);
+		$log->info("Album Mix: Source set to '$source' from the 1.2 settings");
+	}
 
 	$prefs->setValidate({ validator => 'intlimit', low => 0, high => 50 },   'min_tracks');
 	$prefs->setValidate({ validator => 'intlimit', low => 1, high => 50 },   'variety');
 	$prefs->setValidate({ validator => 'intlimit', low => 0, high => 3650 }, 'repeat_days');
+	$prefs->setValidate({ validator => 'intlimit', low => 0, high => 50 },   'artist_cooldown');
+	$prefs->setValidate({ validator => 'intlimit', low => 1, high => 50 },   'lookahead');
 
-	# Load and register the settings page
+	# Load and register the settings pages: server-wide, and per player
 	eval { require Plugins::AlbumMix::Settings };
 	if ( !$@ ) {
 		Plugins::AlbumMix::Settings->new;
 	} else {
 		$log->warn("Could not load AlbumMix settings: $@");
+	}
+
+	eval { require Plugins::AlbumMix::PlayerSettings };
+	if ( !$@ ) {
+		Plugins::AlbumMix::PlayerSettings->new;
+	} else {
+		$log->warn("Could not load AlbumMix player settings: $@");
 	}
 
 	# Register album context menu item
@@ -293,6 +338,7 @@ sub startAlbumMix {
 		seedLoaded          => 0,    # set once the seed album has been sent to the playlist
 		seenFirstSong       => 0,
 		lookupId            => 0,    # increases with every lookup, so a timed-out one can't queue later
+		client              => $client,   # the (master) player: its settings apply to the whole sync group
 	};
 
 	# Record seed in this mix's history (the saved history is updated once
@@ -305,14 +351,14 @@ sub startAlbumMix {
 	if ( $albumId ) {
 		$client->execute(['playlistcontrol', 'cmd:load', "album_id:$albumId"]);
 		$state->{seedLoaded} = 1;
-		_recordPlayed($artistName, $albumName);
+		_recordPlayed($client, $artistName, $albumName);
 	} else {
 		_findAndPlayAlbum($client, $artistName, $albumName, 'load', sub {
 			my $found = shift;
 			return unless _isCurrent($clientId, $state);
 			if ( $found ) {
 				$state->{seedLoaded} = 1;
-				_recordPlayed($artistName, $albumName);
+				_recordPlayed($client, $artistName, $albumName);
 				return;
 			}
 			$log->warn("Album Mix: Could not load the seed album '$albumName' by '$artistName'");
@@ -394,7 +440,7 @@ sub onPlaylistChange {
 
 	my $songIndex   = Slim::Player::Source::streamingSongIndex($client);
 	my $playlistLen = Slim::Player::Playlist::count($client);
-	my $lookahead   = $prefs->get('lookahead') || DEFAULT_LOOKAHEAD;
+	my $lookahead   = _pref($client, 'lookahead') || DEFAULT_LOOKAHEAD;
 	my $remaining   = $playlistLen - $songIndex - 1;
 
 	$log->debug("Album Mix: song $songIndex of $playlistLen, $remaining remaining");
@@ -679,7 +725,7 @@ sub _getSimilarTracks {
 sub _pickAlbumFromSimilarTracks {
 	my ( $client, $clientId, $similarTracks, $apiKey ) = @_;
 
-	my $ordered = _varietyOrder($similarTracks, sub { $_[0]->{match} });
+	my $ordered = _varietyOrder($client, $similarTracks, sub { $_[0]->{match} });
 
 	_tryNextSimilarTrack($client, $clientId, $ordered, 0, $apiKey);
 }
@@ -742,26 +788,28 @@ sub _skipReason {
 	return "already tried: $state->{skipped}->{$key}" if $state->{skipped}->{$key};
 	return 'artist on cooldown'           if _isArtistOnCooldown($clientId, $artist);
 
-	if ( my $type = _releaseType($album) ) {
+	if ( my $type = _releaseType($state->{client}, $album) ) {
 		return "looks like a $type release";
 	}
 
-	if ( my $days = _playedRecently($artist, $album) ) {
+	if ( my $days = _playedRecently($state->{client}, $artist, $album) ) {
 		return "played $days day" . ($days == 1 ? '' : 's') . " ago";
 	}
 
 	return;
 }
 
-# If the album title marks it as a release type the settings filter out,
-# return that type ('compilation', 'live' or 'single/EP'), else undef.
-# Only used for albums the mix picks, never for the album it starts from.
+# If the album title marks it as a release type that player's settings
+# filter out, return that type ('compilation', 'live' or 'single/EP'),
+# else undef. Only used for albums the mix picks, never for the album it
+# starts from.
 sub _releaseType {
-	my $title = lc( shift // '' );
+	my ( $client, $title ) = @_;
+	$title = lc( $title // '' );
 
-	return 'compilation' if $prefs->get('filter_compilations') && $title =~ $RELEASE_TYPE_PATTERNS{compilation};
-	return 'live'        if $prefs->get('filter_live')         && $title =~ $RELEASE_TYPE_PATTERNS{live};
-	return 'single/EP'   if $prefs->get('filter_singles')      && $title =~ $RELEASE_TYPE_PATTERNS{single};
+	return 'compilation' if _pref($client, 'filter_compilations') && $title =~ $RELEASE_TYPE_PATTERNS{compilation};
+	return 'live'        if _pref($client, 'filter_live')         && $title =~ $RELEASE_TYPE_PATTERNS{live};
+	return 'single/EP'   if _pref($client, 'filter_singles')      && $title =~ $RELEASE_TYPE_PATTERNS{single};
 
 	return;
 }
@@ -769,8 +817,9 @@ sub _releaseType {
 # Minimum number of tracks for an album the mix picks, or 0 for no limit.
 # Part of the singles/EP filter, so it is off when that filter is off.
 sub _minTracks {
-	return 0 unless $prefs->get('filter_singles');
-	my $min = $prefs->get('min_tracks');
+	my $client = shift;
+	return 0 unless _pref($client, 'filter_singles');
+	my $min = _pref($client, 'min_tracks');
 	return defined $min ? $min : DEFAULT_MIN_TRACKS;
 }
 
@@ -823,14 +872,14 @@ sub _queueCandidate {
 
 		_addToHistory($clientId, $artist, $album);
 		_addArtistToHistory($clientId, $artist);
-		_recordPlayed($artist, $album);
+		_recordPlayed($client, $artist, $album);
 
 		# If the album found under that name has a different title (e.g.
 		# Last.fm said "Abbey Road", TIDAL had "Abbey Road (Remastered)"),
 		# remember that title too
 		if ( $matchedTitle && _historyKey($artist, $matchedTitle) ne _historyKey($artist, $album) ) {
 			_addToHistory($clientId, $artist, $matchedTitle);
-			_recordPlayed($artist, $matchedTitle);
+			_recordPlayed($client, $artist, $matchedTitle);
 		}
 
 		$state->{pendingLookup} = 0;
@@ -846,9 +895,9 @@ sub _queueCandidate {
 			},
 		});
 	}, {
-		skipOwned => $prefs->get('discover_new') ? 1 : 0,
+		skipOwned => _pref($client, 'source') eq 'online_only' ? 1 : 0,
 		isWanted  => $isWanted,
-		minTracks => _minTracks(),
+		minTracks => _minTracks($client),
 		checkType => 1,
 	});
 }
@@ -918,7 +967,7 @@ sub _findNextAlbumByArtist {
 		}
 
 		# Closest few artists in a weighted random order (see Variety)
-		$similarArtists = _varietyOrder($similarArtists, sub { $_[0]->{match} });
+		$similarArtists = _varietyOrder($client, $similarArtists, sub { $_[0]->{match} });
 
 		# Include the seed artist for different-album-by-same-artist results
 		# (only used when Artist Cooldown is 0, as the seed artist has just played)
@@ -1022,7 +1071,7 @@ sub _tryNextArtist {
 			!_skipReason($clientId, $artist->{name}, $_->{name})
 		} @$albums;
 
-		my $ordered = _varietyOrder(\@candidates, sub { 1 });
+		my $ordered = _varietyOrder($client, \@candidates, sub { 1 });
 
 		_tryArtistAlbum($client, $clientId, $artists, $index, $ordered, 0, $apiKey);
 	});
@@ -1110,14 +1159,16 @@ sub _getTopAlbums {
 # $callback->($found, $reason) is always called exactly once; $found is
 # true only if the album was actually sent to the playlist.
 #
-# Where to look depends on the settings:
-#   Discovery Mode   — online services first, library as last resort.
-#                      With $opts->{skipOwned} (used for every album the
-#                      mix picks, but not for the seed album) an album that
-#                      is in the local library is refused instead, so the
-#                      mix only queues music you don't already own.
-#   Prefer Local     — library first, then online services.
-#   neither          — online services first, library as last resort.
+# Where to look depends on the player's Source setting:
+#   library_only   — only the local library. The album the mix starts
+#                    from may still come from an online service.
+#   library_first  — library first, then online services.
+#   online_first   — online services first, library as last resort.
+#   online_only    — online services first, library as last resort, and
+#                    with $opts->{skipOwned} (used for every album the mix
+#                    picks, but not for the seed album) an album that is in
+#                    the local library is refused, so the mix only queues
+#                    music you don't already own (Discovery).
 #
 # $opts->{isWanted}, if given, is asked just before an online search adds
 # its result; if it returns false the album is not added.
@@ -1154,7 +1205,7 @@ sub _findAndPlayAlbum {
 
 	# The library copy is a different kind of release (e.g. a live album
 	# with a similar name): don't use it
-	if ( $localAlbumId && $opts->{checkType} && (my $type = _releaseType($localTitle)) ) {
+	if ( $localAlbumId && $opts->{checkType} && (my $type = _releaseType($client, $localTitle)) ) {
 		$log->info("Album Mix: Library album '$localTitle' looks like a $type release, not using it");
 		$localAlbumId = undef;
 	}
@@ -1174,14 +1225,27 @@ sub _findAndPlayAlbum {
 		$done->(1, undef, $localTitle);
 	};
 
-	if ( $prefs->get('discover_new') && $opts->{skipOwned} && $ownedId ) {
-		$log->info("Album Mix: Discovery Mode — '$album' by '$artist' is already in your library, skipping");
+	my $source = _pref($client, 'source');
+	$source = 'library_first' unless $source && $SOURCES{$source};
+
+	# The album a mix starts from must always be playable, so for it
+	# "library only" still falls back to the online services
+	$source = 'library_first' if $source eq 'library_only' && $cmd eq 'load';
+
+	if ( $source eq 'online_only' && $opts->{skipOwned} && $ownedId ) {
+		$log->info("Album Mix: Online only — '$album' by '$artist' is already in your library, skipping");
 		$done->(0, 'already in library');
 		return;
 	}
 
-	if ( !$prefs->get('discover_new') && $prefs->get('prefer_local') && $localAlbumId ) {
+	if ( ($source eq 'library_first' || $source eq 'library_only') && $localAlbumId ) {
 		$playLocal->();
+		return;
+	}
+
+	if ( $source eq 'library_only' ) {
+		$log->info("Album Mix: '$album' by '$artist' is not in the library (Source: library only)");
+		$done->(0, 'not in library');
 		return;
 	}
 
@@ -1393,7 +1457,7 @@ sub _searchSpotty {
 					} @items;
 
 					# Not a filtered release type (compilation/live/single)
-					@items = grep { !_releaseType($_->{name}) } @items if $opts->{checkType};
+					@items = grep { !_releaseType($client, $_->{name}) } @items if $opts->{checkType};
 
 					# Only accept a result whose artist and album title match
 					my $match = _bestAlbumMatch($artist, $album, \@items,
@@ -1484,7 +1548,7 @@ sub _searchTidal {
 					$log->info("Album Mix: TIDAL returned " . scalar(@items) . " album results");
 
 					# Not a filtered release type (compilation/live/single)
-					@items = grep { !_releaseType($_->{title}) } @items if $opts->{checkType};
+					@items = grep { !_releaseType($client, $_->{title}) } @items if $opts->{checkType};
 
 					# Only accept a result whose artist and album title match,
 					# so a different album by the same artist isn't queued
@@ -1664,14 +1728,29 @@ sub _nameKey {
 }
 
 # ------------------------------------------------------------
-# Saved history: remembered across mixes, players and restarts,
-# so an album isn't queued again within "Don't Repeat For" days.
+# Saved history: remembered across mixes and restarts, so an album
+# isn't queued again within "Don't Repeat For" days. With History
+# Scope 'shared' there is one history for all players; with 'player'
+# each player (sync group: its main player) has its own.
 # ------------------------------------------------------------
 
-sub _recordPlayed {
-	my ( $artist, $album ) = @_;
+# The prefs object that holds the saved history for this player
+sub _historyStore {
+	my $client = shift;
 
-	my %played = %{ $prefs->get('played_albums') || {} };
+	if ( $client && ($prefs->get('history_scope') // 'shared') eq 'player' ) {
+		$client = $client->master if $client->can('master');
+		return $prefs->client($client);
+	}
+
+	return $prefs;
+}
+
+sub _recordPlayed {
+	my ( $client, $artist, $album ) = @_;
+
+	my $store  = _historyStore($client);
+	my %played = %{ $store->get('played_albums') || {} };
 	$played{ _historyKey($artist, $album) } = time();
 
 	# Forget entries older than the repeat window, and keep the list to a
@@ -1685,18 +1764,18 @@ sub _recordPlayed {
 		delete @played{ @oldest[ 0 .. keys(%played) - MAX_SAVED_HISTORY - 1 ] };
 	}
 
-	$prefs->set('played_albums', \%played);
+	$store->set('played_albums', \%played);
 }
 
 # Days since the album was last queued if that is within the repeat
 # window (at least 1), otherwise 0.
 sub _playedRecently {
-	my ( $artist, $album ) = @_;
+	my ( $client, $artist, $album ) = @_;
 
 	my $days = $prefs->get('repeat_days') || 0;
 	return 0 unless $days > 0;
 
-	my $played = $prefs->get('played_albums') || {};
+	my $played = _historyStore($client)->get('played_albums') || {};
 	my $when   = $played->{ _historyKey($artist, $album) } || return 0;
 
 	my $age = time() - $when;
@@ -1719,9 +1798,9 @@ sub _playedRecently {
 # items are sorted by key, highest first — an item with twice the weight
 # is twice as likely to be ahead of another.
 sub _varietyOrder {
-	my ( $items, $weightOf ) = @_;
+	my ( $client, $items, $weightOf ) = @_;
 
-	my $n = $prefs->get('variety');
+	my $n = _pref($client, 'variety');
 	$n = DEFAULT_VARIETY unless defined $n && $n =~ /^\d+$/ && $n > 0;
 
 	my @list = @$items;
@@ -1765,7 +1844,7 @@ sub _addArtistToHistory {
 	my ( $clientId, $artist ) = @_;
 
 	my $state = $playerState{$clientId} || return;
-	my $cooldown = $prefs->get('artist_cooldown') || DEFAULT_ARTIST_COOLDOWN;
+	my $cooldown = _pref($state->{client}, 'artist_cooldown') || DEFAULT_ARTIST_COOLDOWN;
 
 	push @{$state->{artist_history}}, _nameKey($artist);
 
@@ -1779,12 +1858,64 @@ sub _isArtistOnCooldown {
 	my ( $clientId, $artist ) = @_;
 
 	my $state = $playerState{$clientId} || return 0;
-	my $cooldown = $prefs->get('artist_cooldown') || 0;
+	my $cooldown = _pref($state->{client}, 'artist_cooldown') || 0;
 
 	return 0 unless $cooldown > 0;
 
 	my $key = _nameKey($artist);
 	return grep { $_ eq $key } @{$state->{artist_history}};
+}
+
+# ============================================================
+# Per-player settings
+# ============================================================
+
+# The value of a setting for a player. Synced players use the settings of
+# the main player in the group. A player uses the server defaults unless
+# "Use own settings for this player" is ticked on its settings page; then
+# its own values apply (an unticked checkbox counts as off; a number or
+# choice the player has no value for falls back to the server default —
+# the settings page itself rejects empty numbers). Server-wide-only
+# settings, and calls without a player, always give the server value.
+sub _pref {
+	my ( $client, $name ) = @_;
+
+	my $type = $PLAYER_PREFS{$name};
+
+	if ( $client && $type ) {
+		$client = $client->master if $client->can('master');
+		my $cp = $prefs->client($client);
+
+		if ( $cp->get('own_settings') ) {
+			my $value = $cp->get($name);
+			return $value ? 1 : 0 if $type eq 'bool';
+			return $value if defined $value && $value ne '';
+		}
+	}
+
+	return $prefs->get($name);
+}
+
+# Names of the settings that can be set per player (for the settings pages)
+sub playerPrefNames { return sort keys %PLAYER_PREFS }
+
+# ------------------------------------------------------------
+# 1.2 compatibility: Prefer Local Library / Discovery Mode
+# ------------------------------------------------------------
+
+# The 1.2 settings as one string, to notice when 1.2 changed them
+sub _legacyPrefsKey {
+	return ( $prefs->get('discover_new') ? 1 : 0 ) . ',' . ( $prefs->get('prefer_local') ? 1 : 0 );
+}
+
+# Set the 1.2 settings from Source, so going back to 1.2 behaves as close
+# as 1.2 allows. 1.2 has no "Library only": it becomes Prefer Local Library,
+# which in 1.2 also falls back to online services.
+sub _syncLegacyPrefs {
+	my $source = $prefs->get('source') // '';
+	$prefs->set('discover_new', $source eq 'online_only' ? 1 : 0);
+	$prefs->set('prefer_local', ($source eq 'library_first' || $source eq 'library_only') ? 1 : 0);
+	$prefs->set('legacy_synced', _legacyPrefsKey());
 }
 
 1;

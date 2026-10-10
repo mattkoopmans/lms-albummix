@@ -1,0 +1,8 @@
+[%# Shared by the server-wide and the player settings pages %]
+[% BLOCK albummix_source_select %]
+		<select class="stdedit" name="pref_source">
+		[% FOREACH opt = ['library_only', 'library_first', 'online_first', 'online_only'] %]
+			<option value="[% opt %]" [% IF prefs.source == opt %]selected[% END %]>[% "PLUGIN_ALBUM_MIX_SOURCE_${opt.upper}" | string %]</option>
+		[% END %]
+		</select>
+[% END %]

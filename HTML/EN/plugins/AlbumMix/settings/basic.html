@@ -1,4 +1,5 @@
 [% PROCESS settings/header.html %]
+[% PROCESS plugins/AlbumMix/settings/source_select.html %]
 
 	<div class="prefDesc">[% "PLUGIN_ALBUM_MIX_DESC" | string %]</div>
 
@@ -6,12 +7,10 @@
 		<input type="text" class="stdedit" name="pref_lastfm_api_key" value="[% prefs.lastfm_api_key %]" size="40" />
 	[% END %]
 
-	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_PREFER_LOCAL" desc="PLUGIN_ALBUM_MIX_PREFER_LOCAL_DESC" %]
-		<input type="checkbox" name="pref_prefer_local" value="1" [% IF prefs.prefer_local %]checked[% END %] />
-	[% END %]
+	<div class="prefDesc">[% "PLUGIN_ALBUM_MIX_DEFAULTS_NOTE" | string %]</div>
 
-	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_DISCOVER_NEW" desc="PLUGIN_ALBUM_MIX_DISCOVER_NEW_DESC" %]
-		<input type="checkbox" name="pref_discover_new" value="1" [% IF prefs.discover_new %]checked[% END %] />
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_SOURCE" desc="PLUGIN_ALBUM_MIX_SOURCE_DESC" %]
+		[% PROCESS albummix_source_select %]
 	[% END %]
 
 	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_ARTIST_COOLDOWN" desc="PLUGIN_ALBUM_MIX_ARTIST_COOLDOWN_DESC" %]
@@ -48,6 +47,13 @@
 
 	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_REPEAT_DAYS" desc="PLUGIN_ALBUM_MIX_REPEAT_DAYS_DESC" %]
 		<input type="text" class="stdedit" name="pref_repeat_days" value="[% prefs.repeat_days %]" size="5" />
+	[% END %]
+
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_HISTORY_SCOPE" desc="PLUGIN_ALBUM_MIX_HISTORY_SCOPE_DESC" %]
+		<select class="stdedit" name="pref_history_scope">
+			<option value="shared" [% IF prefs.history_scope != 'player' %]selected[% END %]>[% "PLUGIN_ALBUM_MIX_HISTORY_SHARED" | string %]</option>
+			<option value="player" [% IF prefs.history_scope == 'player' %]selected[% END %]>[% "PLUGIN_ALBUM_MIX_HISTORY_PLAYER" | string %]</option>
+		</select>
 	[% END %]
 
 	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_CLEAR_HISTORY" desc="PLUGIN_ALBUM_MIX_CLEAR_HISTORY_DESC" %]
