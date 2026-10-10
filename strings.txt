@@ -147,3 +147,27 @@ PLUGIN_ALBUM_MIX_OWN_SETTINGS_DESC
 
 PLUGIN_ALBUM_MIX_CLEAR_PLAYER_HISTORY_DESC
 	EN	Tick and save to forget which albums this player has played, so they can be queued again straight away.
+
+PLUGIN_ALBUM_MIX_CREATE_TRACK
+	EN	Create Album Mix from This Track
+
+PLUGIN_ALBUM_MIX_CREATE_ARTIST
+	EN	Create Album Mix from This Artist
+
+PLUGIN_ALBUM_MIX_CONTINUE
+	EN	Continue as Album Mix
+
+PLUGIN_ALBUM_MIX_QUEUED_LIKE_TRACK
+	EN	Queued %s, like "%s"
+
+PLUGIN_ALBUM_MIX_QUEUED_LIKE_ARTIST
+	EN	Queued %s, similar artist to %s
+
+PLUGIN_ALBUM_MIX_NO_API_KEY
+	EN	Album Mix: no Last.fm API key set in the Album Mix settings
+
+PLUGIN_ALBUM_MIX_INCLUDE_SEED
+	EN	Play the Starting Album or Track
+
+PLUGIN_ALBUM_MIX_INCLUDE_SEED_DESC
+	EN	When ticked, the album, track or artist you start a mix from is played first. When not ticked, the mix starts straight away with the first similar album. "Continue as Album Mix" always keeps what is playing.

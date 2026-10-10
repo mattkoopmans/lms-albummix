@@ -67,6 +67,7 @@ my %PLAYER_PREFS = (
 	variety             => 'value',
 	artist_cooldown     => 'value',
 	lookahead           => 'value',
+	include_seed        => 'bool',
 );
 
 # Where to look for albums (the Source setting)
@@ -103,6 +104,7 @@ sub initPlugin {
 		repeat_days       => DEFAULT_REPEAT_DAYS,
 		played_albums     => {},   # saved history: album key => time it was last queued
 		history_scope     => 'shared',   # 'shared' = one saved history for all players, 'player' = one per player
+		include_seed      => 1,          # play the album/track/artist the mix starts from (0: start with the first similar album)
 	});
 
 	# Source replaces Prefer Local Library + Discovery Mode (1.9.0). On the
@@ -143,10 +145,20 @@ sub initPlugin {
 		$log->warn("Could not load AlbumMix player settings: $@");
 	}
 
-	# Register album context menu item
+	# Context menu items: albums, tracks (including Now Playing) and artists
 	Slim::Menu::AlbumInfo->registerInfoProvider( albummix_create => (
 		after => 'addalbum',
 		func  => \&albumInfoHandler,
+	));
+
+	Slim::Menu::TrackInfo->registerInfoProvider( albummix_track => (
+		after => 'addtrack',
+		func  => \&trackInfoHandler,
+	));
+
+	Slim::Menu::ArtistInfo->registerInfoProvider( albummix_artist => (
+		after => 'addartist',
+		func  => \&artistInfoHandler,
 	));
 
 	# Subscribe to playlist newsong events for album transition detection
@@ -186,7 +198,7 @@ sub shutdownPlugin {
 sub getDisplayName { return 'PLUGIN_ALBUM_MIX' }
 
 # ============================================================
-# Album context menu handler
+# Context menu handlers
 # ============================================================
 
 sub albumInfoHandler {
@@ -222,57 +234,93 @@ sub albumInfoHandler {
 
 	return unless $albumName && $artistName;
 
-	# Also add a "Stop Album Mix" option if one is active
-	my $clientId = $client->master->id;
-	if ( $playerState{$clientId} && $playerState{$clientId}->{active} ) {
-		return [{
-			name => cstring($client, 'PLUGIN_ALBUM_MIX_CREATE'),
-			type => 'redirect',
-			jive => {
-				nextWindow => 'nowPlaying',
-				actions    => {
-					go => {
-						player => 0,
-						cmd    => ['albummix', 'start'],
-						params => {
-							album_name  => $albumName,
-							artist_name => $artistName,
-							album_id    => $albumId || 0,
-						},
-					},
-				},
-			},
-			favorites => 0,
-		}, {
-			name => cstring($client, 'PLUGIN_ALBUM_MIX_STOP'),
-			type => 'redirect',
-			jive => {
-				nextWindow => 'parent',
-				actions    => {
-					go => {
-						player => 0,
-						cmd    => ['albummix', 'stop'],
-					},
-				},
-			},
-			favorites => 0,
-		}];
+	return _menuItems($client, _menuItem($client, 'PLUGIN_ALBUM_MIX_CREATE', 'start', {
+		mode        => 'album',
+		album_name  => $albumName,
+		artist_name => $artistName,
+		album_id    => $albumId || 0,
+	}));
+}
+
+# Track context menu (also what Now Playing shows for the current song):
+# "Create Album Mix from This Track", and for the song that is playing
+# right now "Continue as Album Mix" (keep the queue, add similar albums
+# after the current album).
+sub trackInfoHandler {
+	my ( $client, $url, $track, $remoteMeta, $tags, $filter ) = @_;
+
+	return unless $client;
+
+	my %params = ( mode => 'track' );
+
+	if ( $track && blessed($track) ) {
+		my $info = _trackDetails($client, $track);
+		$params{track_title} = $info->{title};
+		$params{artist_name} = $info->{artist};
+		$params{album_name}  = $info->{album};
+		$params{track_id}    = $track->id if $track->can('id') && $track->can('remote') && !$track->remote && $track->id;
+		$url ||= $track->url if $track->can('url');
 	}
 
+	if ( $remoteMeta ) {
+		$params{track_title} ||= $remoteMeta->{title};
+		$params{artist_name} ||= $remoteMeta->{artist};
+		$params{album_name}  ||= $remoteMeta->{album};
+	}
+
+	$params{track_url} = $url if $url;
+
+	return unless $params{track_title} && $params{artist_name};
+
+	my @items = ( _menuItem($client, 'PLUGIN_ALBUM_MIX_CREATE_TRACK', 'start', \%params) );
+
+	# Radio streams never end, so an album added after one would never play
+	my $isStream = $track && blessed($track) && $track->can('remote') && $track->remote
+		&& !( $track->can('secs') && $track->secs );
+
+	if ( $url && !$isStream && _isPlayingNow($client, $url) ) {
+		push @items, _menuItem($client, 'PLUGIN_ALBUM_MIX_CONTINUE', 'start', { mode => 'continue' }, 'parent');
+	}
+
+	return _menuItems($client, @items);
+}
+
+# Artist context menu: "Create Album Mix from This Artist"
+sub artistInfoHandler {
+	my ( $client, $url, $artist, $remoteMeta, $tags, $filter ) = @_;
+
+	return unless $client;
+
+	my $artistName;
+	if ( $artist && blessed($artist) ) {
+		$artistName = $artist->can('name') ? $artist->name : undef;
+	} elsif ( defined $artist && !ref $artist ) {
+		$artistName = $artist;
+	}
+	$artistName ||= $remoteMeta->{artist} || $remoteMeta->{name} if $remoteMeta;
+
+	return unless $artistName;
+
+	return _menuItems($client, _menuItem($client, 'PLUGIN_ALBUM_MIX_CREATE_ARTIST', 'start', {
+		mode        => 'artist',
+		artist_name => $artistName,
+	}));
+}
+
+# One context menu entry that runs an "albummix ..." command
+sub _menuItem {
+	my ( $client, $label, $cmd, $params, $nextWindow ) = @_;
+
 	return {
-		name => cstring($client, 'PLUGIN_ALBUM_MIX_CREATE'),
+		name => cstring($client, $label),
 		type => 'redirect',
 		jive => {
-			nextWindow => 'nowPlaying',
+			nextWindow => $nextWindow || 'nowPlaying',
 			actions    => {
 				go => {
 					player => 0,
-					cmd    => ['albummix', 'start'],
-					params => {
-						album_name  => $albumName,
-						artist_name => $artistName,
-						album_id    => $albumId || 0,
-					},
+					cmd    => ['albummix', $cmd],
+					( $params ? ( params => $params ) : () ),
 				},
 			},
 		},
@@ -280,20 +328,58 @@ sub albumInfoHandler {
 	};
 }
 
+# The entries for a context menu, plus "Stop Album Mix" while a mix is
+# active on this player. A single entry is returned on its own (as LMS
+# expects from an info provider), several as a list.
+sub _menuItems {
+	my ( $client, @items ) = @_;
+
+	my $state = $playerState{ $client->master->id };
+	if ( $state && $state->{active} ) {
+		push @items, _menuItem($client, 'PLUGIN_ALBUM_MIX_STOP', 'stop', undef, 'parent');
+	}
+
+	return @items == 1 ? $items[0] : \@items;
+}
+
+# Is this the song currently playing on the player?
+sub _isPlayingNow {
+	my ( $client, $url ) = @_;
+
+	my $playing = eval {
+		my $index = Slim::Player::Source::playingSongIndex($client);
+		my $track = defined $index ? Slim::Player::Playlist::track($client, $index) : undef;
+		$track && blessed($track) && $track->can('url') ? $track->url : undef;
+	};
+
+	return $playing && $playing eq $url;
+}
+
 # ============================================================
 # CLI handlers
 # ============================================================
 
+# albummix start mode:<album|track|artist|continue> ...
+#   album:    album_name, artist_name, album_id (library albums)
+#   track:    track_title, artist_name, album_name, track_id or track_url
+#   artist:   artist_name
+#   continue: keep the current queue and add similar albums after it
+# Without mode, album is assumed (as in 1.2).
 sub cliStart {
 	my $request = shift;
 	my $client  = $request->client;
 	return unless $client;
 
-	my $albumName  = $request->getParam('album_name');
-	my $artistName = $request->getParam('artist_name');
-	my $albumId    = $request->getParam('album_id') || 0;
+	_startMix($client, {
+		mode       => $request->getParam('mode') || 'album',
+		album      => $request->getParam('album_name'),
+		artist     => $request->getParam('artist_name'),
+		albumId    => $request->getParam('album_id') || 0,
+		trackTitle => $request->getParam('track_title'),
+		trackId    => $request->getParam('track_id') || 0,
+		trackUrl   => $request->getParam('track_url'),
+	});
 
-	startAlbumMix($client, $albumName, $artistName, $albumId);
 	$request->setStatusDone;
 }
 
@@ -310,67 +396,321 @@ sub cliStop {
 # Album Mix engine
 # ============================================================
 
+# Start from an album (kept for callers of the 1.2 interface)
 sub startAlbumMix {
 	my ( $client, $albumName, $artistName, $albumId ) = @_;
 
+	_startMix($client, { mode => 'album', album => $albumName, artist => $artistName, albumId => $albumId });
+}
+
+# Start a mix. $seed->{mode} says where from:
+#   album    — the album; with Include Seed it plays first, without it the
+#              first similar album plays straight away
+#   track    — the track; with Include Seed it plays first, without it the
+#              first album similar to that track plays straight away
+#   artist   — with Include Seed one of the artist's own albums plays first
+#              (Last.fm top albums, same filters as other picks), without
+#              it an album by a similar artist plays straight away
+#   continue — nothing is loaded: the current queue keeps playing and
+#              similar albums are added after the album playing now
+sub _startMix {
+	my ( $client, $seed ) = @_;
+
 	$client = $client->master;
 	my $clientId = $client->id;
+	my $mode     = $seed->{mode} || 'album';
 
-	$log->info("Starting Album Mix: '$albumName' by '$artistName'");
+	my $state = _newState($client, $seed->{artist}, $seed->{album});
 
-	# Initialise player state. Starting a new mix replaces any previous
-	# session for this player; callbacks still in flight from the old
-	# session detect this via _isCurrent() and stop.
-	$playerState{$clientId} = {
+	return _continueMix($client, $state) if $mode eq 'continue';
+
+	my $include = _pref($client, 'include_seed') ? 1 : 0;
+
+	# Leaving out the seed needs Last.fm to find what to play instead
+	if ( !$include && !$prefs->get('lastfm_api_key') ) {
+		$log->warn("Album Mix: No Last.fm API key, so the seed is played after all");
+		$include = 1;
+	}
+
+	$log->info("Starting Album Mix from $mode: "
+		. join(' / ', grep { $_ } $seed->{trackTitle}, $seed->{album}, $seed->{artist})
+		. ($include ? '' : ' (seed not played)'));
+
+	_addArtistToHistory($clientId, $seed->{artist}) if $seed->{artist};
+
+	# The seed's album counts as played in this mix either way, so it
+	# isn't queued again straight after
+	_addToHistory($clientId, $seed->{artist}, $seed->{album}) if $seed->{artist} && $seed->{album};
+
+	_showBriefly($client, cstring($client, 'PLUGIN_ALBUM_MIX_STARTED') . ': '
+		. ($seed->{trackTitle} || $seed->{album} || $seed->{artist} || ''));
+
+	if ( $mode eq 'artist' ) {
+		return $include
+			? _startFromArtistAlbum($client, $state, $seed->{artist})
+			: _startWithoutSeed($client, $state, { artistOnly => $seed->{artist} });
+	}
+
+	if ( $mode eq 'track' ) {
+		return _startWithoutSeed($client, $state, { title => $seed->{trackTitle}, artist => $seed->{artist} })
+			unless $include;
+
+		if ( $seed->{trackId} ) {
+			$client->execute(['playlistcontrol', 'cmd:load', "track_id:$seed->{trackId}"]);
+		} elsif ( $seed->{trackUrl} ) {
+			$client->execute(['playlist', 'play', $seed->{trackUrl}]);
+		} else {
+			$log->warn("Album Mix: Track has neither an id nor a URL, cannot play it");
+			return stopAlbumMix($client);
+		}
+		$state->{seedLoaded} = 1;
+		return;
+	}
+
+	# Album
+	unless ( $include ) {
+		return _albumSeedTrack($client, $state, $seed, sub {
+			my $title = shift;
+			return unless _isCurrent($clientId, $state);
+			_startWithoutSeed($client, $state, $title
+				? { title => $title, artist => $seed->{artist} }
+				: { artistOnly => $seed->{artist} });
+		});
+	}
+
+	if ( $seed->{albumId} ) {
+		$client->execute(['playlistcontrol', 'cmd:load', "album_id:$seed->{albumId}"]);
+		$state->{seedLoaded} = 1;
+		_recordPlayed($client, $seed->{artist}, $seed->{album});
+		return;
+	}
+
+	_findAndPlayAlbum($client, $seed->{artist}, $seed->{album}, 'load', sub {
+		my $found = shift;
+		return unless _isCurrent($clientId, $state);
+		if ( $found ) {
+			$state->{seedLoaded} = 1;
+			_recordPlayed($client, $seed->{artist}, $seed->{album});
+			return;
+		}
+		$log->warn("Album Mix: Could not load the seed album '$seed->{album}' by '$seed->{artist}'");
+		stopAlbumMix($client);
+	}, { isSeed => 1, isWanted => sub { _isCurrent($clientId, $state) } });
+}
+
+# Fresh state for a new mix on this player. Starting a new mix replaces any
+# previous session for this player; callbacks still in flight from the old
+# session detect this via _isCurrent() and stop.
+sub _newState {
+	my ( $client, $artist, $album ) = @_;
+
+	my $state = $playerState{ $client->id } = {
 		active              => 1,
 		history             => [],
 		artist_history      => [],   # recent artists for cooldown enforcement
 		skipped             => {},   # albums that failed to queue (not found / already owned) this session
-		seedArtist          => $artistName,
-		seedAlbum           => $albumName,
+		seedArtist          => $artist,
+		seedAlbum           => $album,
+		lastSeed            => undef,   # { title, artist } of the track the last lookup started from
 		lastAlbumStartIndex => 0,    # playlist index where the last queued album begins
 		pendingLookup       => 0,
 		pendingSince        => 0,
 		startedAt           => time(),
-		# Loading the seed album itself fires "queue replaced" events;
-		# ignore them until the seed starts playing (or this time passes)
+		# Loading the seed itself fires "queue replaced" events; ignore them
+		# until the seed starts playing (or this time passes)
 		guardUntil          => time() + START_GUARD_SECS,
-		seedLoaded          => 0,    # set once the seed album has been sent to the playlist
+		seedLoaded          => 0,    # set once the first album (or track) has been sent to the playlist
+		firstLoad           => 0,    # 1 while the first album still has to replace the queue (seed not played)
 		seenFirstSong       => 0,
 		lookupId            => 0,    # increases with every lookup, so a timed-out one can't queue later
 		client              => $client,   # the (master) player: its settings apply to the whole sync group
 	};
 
-	# Record seed in this mix's history (the saved history is updated once
-	# the seed has actually loaded)
-	_addToHistory($clientId, $artistName, $albumName);
-	_addArtistToHistory($clientId, $artistName);
-
-	# Load the seed album
-	my $state = $playerState{$clientId};
-	if ( $albumId ) {
-		$client->execute(['playlistcontrol', 'cmd:load', "album_id:$albumId"]);
-		$state->{seedLoaded} = 1;
-		_recordPlayed($client, $artistName, $albumName);
-	} else {
-		_findAndPlayAlbum($client, $artistName, $albumName, 'load', sub {
-			my $found = shift;
-			return unless _isCurrent($clientId, $state);
-			if ( $found ) {
-				$state->{seedLoaded} = 1;
-				_recordPlayed($client, $artistName, $albumName);
-				return;
-			}
-			$log->warn("Album Mix: Could not load the seed album '$albumName' by '$artistName'");
+	# If nothing of the mix has reached the queue after this long (Last.fm
+	# or an online service never answered), stop rather than waiting for ever
+	eval {
+		Slim::Utils::Timers::setTimer($client, time() + LOOKUP_TIMEOUT_SECS, sub {
+			return unless _isCurrent($client->id, $state) && !$state->{seedLoaded};
+			$log->warn("Album Mix: Nothing could be queued in time, stopping");
 			stopAlbumMix($client);
 		});
+	};
+
+	return $state;
+}
+
+# Seed not played: look up the first similar album straight away and let
+# it replace the queue
+sub _startWithoutSeed {
+	my ( $client, $state, $seed ) = @_;
+
+	$state->{firstLoad} = 1;
+	_findNextAlbum($client, $client->id, $seed);
+}
+
+# Artist with Include Seed: play one of the artist's own albums first.
+# Last.fm's top albums are tried in Variety order with the usual filters
+# and saved history (but not the artist cooldown). If none can be played,
+# the mix starts from a similar artist instead.
+sub _startFromArtistAlbum {
+	my ( $client, $state, $artist ) = @_;
+
+	my $clientId = $client->id;
+	my $apiKey   = $prefs->get('lastfm_api_key');
+
+	unless ( $apiKey ) {
+		$log->warn("Album Mix: No Last.fm API key, cannot find albums by '$artist'");
+		_showBriefly($client, cstring($client, 'PLUGIN_ALBUM_MIX_NO_API_KEY'));
+		return stopAlbumMix($client);
 	}
+
+	_getTopAlbums($client, $clientId, $artist, $apiKey, sub {
+		my $albums = shift;
+		return unless _isCurrent($clientId, $state);
+
+		my @candidates = grep {
+			!_releaseType($client, $_->{name}) && !_playedRecently($client, $artist, $_->{name})
+		} @$albums;
+
+		_tryArtistStartAlbum($client, $state, $artist, _varietyOrder($client, \@candidates, sub { 1 }), 0);
+	});
+}
+
+sub _tryArtistStartAlbum {
+	my ( $client, $state, $artist, $albums, $i ) = @_;
+
+	my $clientId = $client->id;
+	return unless _isCurrent($clientId, $state);
+
+	if ( $i >= @$albums ) {
+		$log->info("Album Mix: No album by '$artist' could be played, starting from a similar artist");
+		return _startWithoutSeed($client, $state, { artistOnly => $artist });
+	}
+
+	my $album = $albums->[$i]->{name};
+	_findAndPlayAlbum($client, $artist, $album, 'load', sub {
+		my ( $found, undef, $title ) = @_;
+		return unless _isCurrent($clientId, $state);
+		return _tryArtistStartAlbum($client, $state, $artist, $albums, $i + 1) unless $found;
+
+		$log->info("Album Mix: Starting with '$album' by '$artist'");
+		$state->{seedAlbum}  = $album;
+		$state->{seedLoaded} = 1;
+		_addToHistory($clientId, $artist, $album);
+		_recordPlayed($client, $artist, $album);
+		_recordPlayed($client, $artist, $title) if $title && $title ne $album;
+	}, {
+		isSeed    => 1,
+		isWanted  => sub { _isCurrent($clientId, $state) },
+		minTracks => _minTracks($client),
+		checkType => 1,
+	});
+}
+
+# A track title from the album to use as the seed when the album itself
+# isn't played: from the library when it is a library album, otherwise
+# from Last.fm album.getInfo. Uses the same second-to-second-last rule as
+# other seed tracks. Calls $callback->($title) or $callback->(undef).
+sub _albumSeedTrack {
+	my ( $client, $state, $seed, $callback ) = @_;
+
+	if ( $seed->{albumId} ) {
+		my $titles = eval {
+			my $sth = Slim::Schema->dbh->prepare_cached(
+				"SELECT title FROM tracks WHERE album = ? ORDER BY disc, tracknum, title");
+			$sth->execute($seed->{albumId});
+			my $t = [ map { $_->[0] } @{ $sth->fetchall_arrayref } ];
+			$sth->finish;
+			$t;
+		} || [];
+
+		if ( @$titles ) {
+			return $callback->( $titles->[ _seedIndex(0, $#$titles) ] );
+		}
+	}
+
+	my $apiKey = $prefs->get('lastfm_api_key');
+	my $url = LASTFM_API_BASE . '?method=album.getInfo'
+		. '&artist=' . uri_escape_utf8($seed->{artist} // '')
+		. '&album='  . uri_escape_utf8($seed->{album} // '')
+		. '&autocorrect=1'
+		. '&api_key=' . $apiKey
+		. '&format=json';
+
+	Slim::Networking::SimpleAsyncHTTP->new(
+		sub {
+			my $http   = shift;
+			my $result = eval { decode_json($http->content) };
+			my $tracks = $result && ref $result eq 'HASH' && $result->{album} && $result->{album}->{tracks}
+				? $result->{album}->{tracks}->{track} : [];
+			$tracks = [$tracks] if ref $tracks eq 'HASH';
+			my @titles = grep { defined && length } map { ref $_ eq 'HASH' ? $_->{name} : undef } @{ $tracks || [] };
+
+			$log->debug("Album Mix: album.getInfo gave " . scalar(@titles) . " tracks for '$seed->{album}'");
+			$callback->( @titles ? $titles[ _seedIndex(0, $#titles) ] : undef );
+		},
+		sub { $callback->(undef) },
+		{ timeout => 15 },
+	)->get($url);
+}
+
+# "Continue as Album Mix": keep the current queue; when it is about to run
+# out, similar albums are added, following on from the last album in it
+sub _continueMix {
+	my ( $client, $state ) = @_;
+
+	my $index = eval { Slim::Player::Source::playingSongIndex($client) } // 0;
+	my $count = Slim::Player::Playlist::count($client);
+
+	unless ( $count ) {
+		$log->info("Album Mix: Nothing is playing, nothing to continue");
+		return stopAlbumMix($client);
+	}
+
+	# The mix follows on from the last album in the queue (the one playing
+	# now, or one already queued after it): find where that album starts
+	my $albumAt = sub {
+		my $t = Slim::Player::Playlist::track($client, shift);
+		return $t ? lc( _trackDetails($client, $t)->{album} || '' ) : '';
+	};
+	my $last  = $count - 1;
+	my $name  = $albumAt->($last);
+	my $start = $last;
+	$start-- while $name && $start > 0 && $albumAt->($start - 1) eq $name;
+
+	my $current = _trackDetails($client, Slim::Player::Playlist::track($client, $start));
+
+	$state->{lastAlbumStartIndex} = $start;
+	$state->{seedArtist}    = $current->{artist};
+	$state->{seedAlbum}     = $current->{album};
+	$state->{seedLoaded}    = 1;
+	$state->{seenFirstSong} = 1;
+	$state->{guardUntil}    = 0;   # nothing is loaded, so nothing to guard
+
+	if ( $current->{artist} ) {
+		_addArtistToHistory($client->id, $current->{artist});
+		if ( $current->{album} ) {
+			_addToHistory($client->id, $current->{artist}, $current->{album});
+			_recordPlayed($client, $current->{artist}, $current->{album});
+		}
+	}
+
+	$log->info("Album Mix: Continuing from '" . ($current->{album} // '?') . "' by '" . ($current->{artist} // '?') . "' (album starts at queue position $start)");
+	_showBriefly($client, cstring($client, 'PLUGIN_ALBUM_MIX_STARTED') . ': ' . ($current->{album} || $current->{title} || ''));
+
+	# Already close to the end of the queue: look up the next album now
+	my $remaining = $count - $index - 1;
+	_findNextAlbum($client, $client->id) if $remaining <= (_pref($client, 'lookahead') || DEFAULT_LOOKAHEAD);
+}
+
+sub _showBriefly {
+	my ( $client, $text ) = @_;
 
 	$client->showBriefly({
 		jive => {
 			type  => 'mixed',
 			style => 'add',
-			text  => [ cstring($client, 'PLUGIN_ALBUM_MIX_STARTED') . ': ' . $albumName ],
+			text  => [ $text ],
 		},
 	});
 }
@@ -384,13 +724,7 @@ sub stopAlbumMix {
 		$playerState{$clientId}->{active} = 0;
 		$log->info("Album Mix stopped for player $clientId");
 
-		$client->showBriefly({
-			jive => {
-				type  => 'mixed',
-				style => 'add',
-				text  => [ cstring($client, 'PLUGIN_ALBUM_MIX_STOPPED') ],
-			},
-		});
+		_showBriefly($client, cstring($client, 'PLUGIN_ALBUM_MIX_STOPPED'));
 	}
 }
 
@@ -429,11 +763,16 @@ sub onPlaylistChange {
 		$state->{guardUntil} = $until if $until < $state->{guardUntil};
 	}
 
+	# Nothing of the mix is in the queue yet (its first album is still being
+	# looked up): songs changing in the old queue are not the mix's business
+	return unless $state->{seedLoaded};
+
 	if ( $state->{pendingLookup} ) {
 		# A lookup is already running. If it has been pending for too long
 		# (e.g. an online service never answered), assume it is stuck and
 		# allow a new one rather than letting the mix stall for good.
 		return if time() - ($state->{pendingSince} || 0) < LOOKUP_TIMEOUT_SECS;
+
 		$log->warn("Album Mix: Previous lookup timed out, starting a new one");
 		$state->{pendingLookup} = 0;
 	}
@@ -489,8 +828,12 @@ sub onPlaylistReplaced {
 # actually been queued.
 # ============================================================
 
+# $seed (optional) gives the starting point instead of a track from the
+# queue: { title, artist } for a seed track, or { artistOnly } to go
+# straight to similar artists. Used when the mix starts without playing
+# its seed.
 sub _findNextAlbum {
-	my ( $client, $clientId ) = @_;
+	my ( $client, $clientId, $seed ) = @_;
 
 	my $state = $playerState{$clientId};
 	return unless $state && $state->{active};
@@ -502,15 +845,22 @@ sub _findNextAlbum {
 	my $apiKey = $prefs->get('lastfm_api_key');
 	unless ( $apiKey ) {
 		$log->warn("Album Mix: No Last.fm API key configured");
+		_showBriefly($client, cstring($client, 'PLUGIN_ALBUM_MIX_NO_API_KEY'));
 		$state->{pendingLookup} = 0;
 		return;
 	}
 
-	# --- Extract a seed track from the last queued album ---
-	my ( $seedTrack, $seedArtist ) = _getSeedTrack($client, $clientId);
+	if ( $seed && $seed->{artistOnly} ) {
+		$state->{lastSeed} = undef;
+		return _findNextAlbumByArtist($client, $clientId, $seed->{artistOnly}, $apiKey);
+	}
+
+	# --- The seed track: given, or a track from the last queued album ---
+	my ( $seedTrack, $seedArtist ) = $seed ? ( $seed->{title}, $seed->{artist} ) : _getSeedTrack($client, $clientId);
 
 	if ( $seedTrack && $seedArtist ) {
 		$log->info("Album Mix: Seed track '$seedTrack' by '$seedArtist'");
+		$state->{lastSeed} = { title => $seedTrack, artist => $seedArtist };
 
 		_getSimilarTracks($client, $clientId, $seedArtist, $seedTrack, $apiKey, sub {
 			my $similarTracks = shift;
@@ -544,19 +894,7 @@ sub _getSeedTrack {
 	my ( $albumStart, $albumEnd ) = _lastAlbumRange($client, $state, $playlistLen);
 	my $albumTrackCount = $albumEnd - $albumStart + 1;
 
-	my $targetIndex;
-	if ( $albumTrackCount >= 4 ) {
-		# Random track between second (start+1) and second-to-last (end-1) inclusive
-		my $lo = $albumStart + 1;
-		my $hi = $albumEnd - 1;
-		$targetIndex = $lo + int(rand($hi - $lo + 1));
-	} elsif ( $albumTrackCount >= 2 ) {
-		# Too few tracks for a proper range — use the second track
-		$targetIndex = $albumStart + 1;
-	} else {
-		# Single-track album — use that track
-		$targetIndex = $albumStart;
-	}
+	my $targetIndex = _seedIndex($albumStart, $albumEnd);
 
 	$log->debug("Album Mix: Seed track — album range [$albumStart..$albumEnd], picked index $targetIndex");
 
@@ -565,6 +903,19 @@ sub _getSeedTrack {
 
 	my $info = _trackDetails($client, $track);
 	return ( $info->{title}, $info->{artist} );
+}
+
+# Which track of an album (positions $first..$last) to use as the seed: a
+# random one between the second and the second-to-last track, as the first
+# and last are often intros, outros or hidden tracks. With 2 or 3 tracks
+# it is the second, with 1 the only one.
+sub _seedIndex {
+	my ( $first, $last ) = @_;
+
+	my $count = $last - $first + 1;
+	return $first + 1 + int(rand($count - 2)) if $count >= 4;
+	return $first + 1 if $count >= 2;
+	return $first;
 }
 
 # Work out where the last queued album sits in the playlist.
@@ -772,9 +1123,62 @@ sub _tryNextSimilarTrack {
 			return;
 		}
 
-		_queueCandidate($client, $clientId, $track->{artist}, $albumName,
-			"via similar track '$track->{title}'", $next);
+		_queueCandidate($client, $clientId, $track->{artist}, $albumName, {
+			kind       => 'track',
+			track      => $track->{title},
+			trackArtist => $track->{artist},
+			match      => $track->{match},
+			seed       => $state->{lastSeed},
+		}, $next);
 	});
+}
+
+# No album could be found. If nothing of the mix has played yet (seed not
+# played), stop: there is nothing to continue from.
+sub _nothingFound {
+	my ( $client, $state ) = @_;
+
+	_showBriefly($client, cstring($client, 'PLUGIN_ALBUM_MIX_NO_SIMILAR'));
+	stopAlbumMix($client) if $state->{firstLoad};
+}
+
+# Why an album was picked, for the log:
+#   track:  its track 'X' by Y is similar to 'Seed' by Z (match 0.83)
+#   artist: Y is an artist similar to Z (match 0.61)
+sub _whyText {
+	my $why = shift || {};
+
+	my $match = defined $why->{match} ? sprintf(' (Last.fm match %.2f)', $why->{match}) : '';
+
+	if ( ($why->{kind} // '') eq 'track' ) {
+		my $seed = $why->{seed};
+		return "its track '$why->{track}' by $why->{trackArtist} is similar to "
+			. ($seed ? "'$seed->{title}' by $seed->{artist}" : 'the last album') . $match;
+	}
+	if ( ($why->{kind} // '') eq 'artist' ) {
+		return "artist similar to $why->{seedArtist}$match";
+	}
+	return 'picked by Album Mix';
+}
+
+# The short pop-up shown when an album is queued:
+#   Queued Album — Artist, like "Seed track"
+#   Queued Album — Artist, similar artist to Seed artist
+sub _whyPopup {
+	my ( $client, $album, $artist, $why ) = @_;
+
+	# \x{2014} is an em dash, written as a character code because this file
+	# has no "use utf8" and album names are character strings
+	my $what = "$album \x{2014} $artist";
+	$why ||= {};
+
+	if ( ($why->{kind} // '') eq 'track' && $why->{seed} ) {
+		return sprintf(cstring($client, 'PLUGIN_ALBUM_MIX_QUEUED_LIKE_TRACK'), $what, $why->{seed}->{title});
+	}
+	if ( ($why->{kind} // '') eq 'artist' && $why->{seedArtist} && lc($why->{seedArtist}) ne lc($artist) ) {
+		return sprintf(cstring($client, 'PLUGIN_ALBUM_MIX_QUEUED_LIKE_ARTIST'), $what, $why->{seedArtist});
+	}
+	return sprintf(cstring($client, 'PLUGIN_ALBUM_MIX_QUEUED'), $what);
 }
 
 # Why a candidate album should not be queued, or undef if it's fine.
@@ -829,7 +1233,7 @@ sub _minTracks {
 # in Discovery Mode) it is remembered as skipped for this session and
 # $onFail is called so the caller can move on to the next candidate.
 sub _queueCandidate {
-	my ( $client, $clientId, $artist, $album, $via, $onFail ) = @_;
+	my ( $client, $clientId, $artist, $album, $why, $onFail ) = @_;
 
 	my $state = $playerState{$clientId};
 	return unless $state && $state->{active};
@@ -843,9 +1247,14 @@ sub _queueCandidate {
 		_isCurrent($clientId, $state) && $lookupId == $state->{lookupId};
 	};
 
+	my $via = _whyText($why);
+
+	# The first album of a mix that doesn't play its seed replaces the queue
+	my $cmd = $state->{firstLoad} ? 'load' : 'add';
+
 	$log->info("Album Mix: Trying '$album' by '$artist' ($via)");
 
-	_findAndPlayAlbum($client, $artist, $album, 'add', sub {
+	_findAndPlayAlbum($client, $artist, $album, $cmd, sub {
 		my ( $found, $reason, $matchedTitle ) = @_;
 
 		return unless _isCurrent($clientId, $state);
@@ -867,6 +1276,11 @@ sub _queueCandidate {
 
 		$log->info("Album Mix: Queued '$album' by '$artist' ($via)");
 
+		if ( $state->{firstLoad} ) {
+			$state->{firstLoad}  = 0;
+			$state->{seedLoaded} = 1;
+		}
+
 		$state->{seedArtist} = $artist;
 		$state->{seedAlbum}  = $album;
 
@@ -884,16 +1298,7 @@ sub _queueCandidate {
 
 		$state->{pendingLookup} = 0;
 
-		$client->showBriefly({
-			jive => {
-				type  => 'mixed',
-				style => 'add',
-				text  => [ sprintf(
-					cstring($client, 'PLUGIN_ALBUM_MIX_QUEUED'),
-					"$album — $artist"
-				) ],
-			},
-		});
+		_showBriefly($client, _whyPopup($client, $album, $artist, $why));
 	}, {
 		skipOwned => _pref($client, 'source') eq 'online_only' ? 1 : 0,
 		isWanted  => $isWanted,
@@ -963,6 +1368,7 @@ sub _findNextAlbumByArtist {
 		unless ( $similarArtists && @$similarArtists ) {
 			$log->warn("Album Mix: No similar artists found for '$seedArtist'");
 			$state->{pendingLookup} = 0;
+			_nothingFound($client, $state);
 			return;
 		}
 
@@ -1039,14 +1445,7 @@ sub _tryNextArtist {
 	if ( $index >= scalar @$artists ) {
 		$log->warn("Album Mix: Exhausted all similar artists — no new album found");
 		$state->{pendingLookup} = 0;
-
-		$client->showBriefly({
-			jive => {
-				type  => 'mixed',
-				style => 'add',
-				text  => [ cstring($client, 'PLUGIN_ALBUM_MIX_NO_SIMILAR') ],
-			},
-		});
+		_nothingFound($client, $state);
 		return;
 	}
 
@@ -1093,7 +1492,11 @@ sub _tryArtistAlbum {
 	my $artist = $artists->[$artistIndex]->{name};
 	my $album  = $candidates->[$albumIndex]->{name};
 
-	_queueCandidate($client, $clientId, $artist, $album, 'artist fallback', sub {
+	_queueCandidate($client, $clientId, $artist, $album, {
+		kind       => 'artist',
+		seedArtist => $artists->[0]->{name},
+		match      => $artists->[$artistIndex]->{match},
+	}, sub {
 		_tryArtistAlbum($client, $clientId, $artists, $artistIndex, $candidates, $albumIndex + 1, $apiKey);
 	});
 }
@@ -1178,6 +1581,8 @@ sub _getTopAlbums {
 # title of the album actually found, not just the title that was asked for
 # (so asking for "Rumours" can't end up queuing "Rumours (Live)").
 #
+# $opts->{isSeed}: this is the album the mix starts from (always playable).
+#
 # On success $callback also gets the title of the album that was queued.
 sub _findAndPlayAlbum {
 	my ( $client, $artist, $album, $cmd, $callback, $opts ) = @_;
@@ -1188,6 +1593,13 @@ sub _findAndPlayAlbum {
 	# Record where this album will start in the playlist (for seed track selection)
 	my $clientId = $client->master->id;
 	my $preCount = Slim::Player::Playlist::count($client);
+
+	# The mix is about to replace the queue itself: ignore the "queue
+	# replaced" events that causes (the guard ends once its first song plays)
+	if ( $cmd eq 'load' && (my $state = $playerState{$clientId}) ) {
+		$state->{guardUntil}    = time() + START_GUARD_SECS;
+		$state->{seenFirstSong} = 0;
+	}
 
 	my $done = sub {
 		my ( $found, $reason, $title ) = @_;
@@ -1229,8 +1641,9 @@ sub _findAndPlayAlbum {
 	$source = 'library_first' unless $source && $SOURCES{$source};
 
 	# The album a mix starts from must always be playable, so for it
-	# "library only" still falls back to the online services
-	$source = 'library_first' if $source eq 'library_only' && $cmd eq 'load';
+	# "library only" still falls back to the online services. (Not for the
+	# first similar album of a mix that doesn't play its seed.)
+	$source = 'library_first' if $source eq 'library_only' && $opts->{isSeed};
 
 	if ( $source eq 'online_only' && $opts->{skipOwned} && $ownedId ) {
 		$log->info("Album Mix: Online only — '$album' by '$artist' is already in your library, skipping");
@@ -1873,10 +2286,11 @@ sub _isArtistOnCooldown {
 # The value of a setting for a player. Synced players use the settings of
 # the main player in the group. A player uses the server defaults unless
 # "Use own settings for this player" is ticked on its settings page; then
-# its own values apply (an unticked checkbox counts as off; a number or
-# choice the player has no value for falls back to the server default —
-# the settings page itself rejects empty numbers). Server-wide-only
-# settings, and calls without a player, always give the server value.
+# its own values apply. A setting the player has no value for yet (e.g. one
+# added in a later version) falls back to the server default; an unticked
+# checkbox is stored as 0 by the player settings page, so it stays off.
+# Server-wide-only settings, and calls without a player, always give the
+# server value.
 sub _pref {
 	my ( $client, $name ) = @_;
 
@@ -1884,17 +2298,48 @@ sub _pref {
 
 	if ( $client && $type ) {
 		$client = $client->master if $client->can('master');
-		my $cp = $prefs->client($client);
+		my $cp = _clientPrefs($client);
 
 		if ( $cp->get('own_settings') ) {
 			my $value = $cp->get($name);
-			return $value ? 1 : 0 if $type eq 'bool';
-			return $value if defined $value && $value ne '';
+			if ( defined $value && $value ne '' ) {
+				return $type eq 'bool' ? ( $value ? 1 : 0 ) : $value;
+			}
 		}
 	}
 
 	return $prefs->get($name);
 }
+
+# Version of the per-player settings layout (see _clientPrefs)
+use constant CLIENT_PREFS_VERSION => 2;
+
+# A player's prefs, brought up to date once per player. 1.9.0/1.9.1 read
+# an empty checkbox as "off"; from 1.9.2 an empty value means "not set,
+# use the server default" (so settings added later start from the
+# default). Players that already had their own settings keep their
+# unticked Skip boxes off: those are stored as 0.
+my %clientPrefsChecked;
+sub _clientPrefs {
+	my $client = shift;
+
+	my $cp = $prefs->client($client);
+	return $cp if $clientPrefsChecked{ $client->id }++;
+
+	if ( ($cp->get('prefs_version') || 0) < CLIENT_PREFS_VERSION ) {
+		if ( $cp->get('own_settings') ) {
+			for my $name ( qw(filter_compilations filter_live filter_singles) ) {
+				$cp->set($name, 0) unless defined $cp->get($name) && $cp->get($name) ne '';
+			}
+		}
+		$cp->set('prefs_version', CLIENT_PREFS_VERSION);
+	}
+
+	return $cp;
+}
+
+# Names of the per-player settings that are checkboxes
+sub playerBoolPrefNames { return grep { $PLAYER_PREFS{$_} eq 'bool' } sort keys %PLAYER_PREFS }
 
 # Names of the settings that can be set per player (for the settings pages)
 sub playerPrefNames { return sort keys %PLAYER_PREFS }

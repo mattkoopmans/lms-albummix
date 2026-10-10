@@ -4,11 +4,16 @@ A [Lyrion Music Server](https://lyrion.org/) plugin that creates continuous, dis
 
 ## How it works
 
-1. Open any album's context menu and select **Create Album Mix**
-2. The seed album starts playing straight away
+1. Start a mix from a context menu (**More** / the **⋮** menu):
+   - an album — **Create Album Mix**
+   - a track — **Create Album Mix from This Track**
+   - an artist — **Create Album Mix from This Artist** (artists in your library; online services' own artist pages may not offer it)
+   - the song playing now — **Continue as Album Mix** (keeps your queue; when it is about to run out, similar albums are added, following on from the last album in it). Not offered for radio streams, which never end
+2. What you started from plays first — the album, the track, or one of the artist's albums. Untick **Play the Starting Album or Track** to skip it and start straight away with the first similar album.
 3. When the current album is nearly finished, the plugin picks a track from it and asks Last.fm for similar tracks
 4. It works out which album each similar track belongs to and queues the first one that passes the checks below
-5. The process repeats — each queued album seeds the next
+5. A short message says what was queued and why (e.g. *Queued Tusk — Fleetwood Mac, like "Dreams"*); the server log has the full reason
+6. The process repeats — each queued album seeds the next
 
 ## How the next album is chosen
 
@@ -80,7 +85,8 @@ Settings are on two pages:
 | Setting | Default | Per player | Description |
 |---|---|---|---|
 | Last.fm API Key | *(empty)* | — | Required. Get one free at [last.fm/api](https://www.last.fm/api/account/create) |
-| Source | Library first | yes | Where albums come from: **Library only**, **Library first, then online**, **Online first, then library**, or **Online only** (only albums you don't own — discovery). The album you start from is always played |
+| Play the Starting Album or Track | On | yes | Play what the mix starts from (album, track, or one of the artist's albums) before the similar albums. Off: start straight away with the first similar album, chosen from a track of the starting album (or the track itself, or the artist's similar artists) |
+| Source | Library first | yes | Where albums come from: **Library only**, **Library first, then online**, **Online first, then library**, or **Online only** (only albums you don't own — discovery). The album you start from can always come from anywhere, even with Library only |
 | Skip Compilations | On | yes | Don't queue greatest hits, best-of, collections, anthologies, soundtracks, tributes and similar |
 | Skip Live Albums | On | yes | Don't queue live albums ("Live at …", "In Concert", "Unplugged", …) |
 | Skip Singles and EPs | On | yes | Don't queue singles, EPs or remix releases |
@@ -109,7 +115,7 @@ Switch back to the normal URL (`.../main/repo.xml`, see **Installation**) to ret
 
 ## Stopping a mix
 
-- Open any album's context menu while a mix is active and select **Stop Album Mix**, or
+- Open any album's, track's or artist's context menu while a mix is active and select **Stop Album Mix**, or
 - Clear the queue, or start playing something else — the mix stops by itself
 
 ## Compatibility
@@ -120,6 +126,12 @@ Switch back to the normal URL (`.../main/repo.xml`, see **Installation**) to ret
 - Online services: TIDAL is tested. Spotify (via Spotty) is supported but untested. Qobuz and Deezer are not supported yet
 
 ## Changelog
+
+### 1.9.2 (development build towards 2.0)
+- Start a mix from a track, an artist, or the song playing now (**Continue as Album Mix**), as well as from an album
+- New per-player setting **Play the Starting Album or Track**: untick it to skip the seed and start with the first similar album
+- The pop-up says why each album was queued (*like "song"* or *similar artist to …*), and the log gives the full reason including the Last.fm match score
+- A message appears when the Last.fm API key is missing, instead of the mix silently doing nothing
 
 ### 1.9.1 (development build towards 2.0)
 - Fixed: the Source choices showed no names in the settings pages (seen in Material Skin)

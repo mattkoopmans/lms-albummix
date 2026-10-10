@@ -33,6 +33,10 @@
 		<input type="text" class="stdedit" name="pref_variety" value="[% prefs.variety %]" size="5" />
 	[% END %]
 
+	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_INCLUDE_SEED" desc="PLUGIN_ALBUM_MIX_INCLUDE_SEED_DESC" %]
+		<input type="checkbox" name="pref_include_seed" value="1" [% IF prefs.include_seed %]checked[% END %] />
+	[% END %]
+
 	[% WRAPPER setting title="PLUGIN_ALBUM_MIX_FILTER_COMPILATIONS" desc="PLUGIN_ALBUM_MIX_FILTER_COMPILATIONS_DESC" %]
 		<input type="checkbox" name="pref_filter_compilations" value="1" [% IF prefs.filter_compilations %]checked[% END %] />
 	[% END %]

@@ -27,7 +27,7 @@ sub prefs {
 	return ($prefs, qw(
 		lastfm_api_key max_history source lookahead artist_cooldown
 		filter_compilations filter_live filter_singles min_tracks variety
-		repeat_days history_scope
+		repeat_days history_scope include_seed
 	));
 }
 

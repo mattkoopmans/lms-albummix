@@ -34,7 +34,7 @@ sub handler {
 
 	return $class->SUPER::handler($client, $params) unless $client;
 
-	my $cp = $prefs->client($client);
+	my $cp = Plugins::AlbumMix::Plugin::_clientPrefs($client);
 
 	# The saved history in use is the main player's when synced
 	my $hp = $prefs->client( $client->can('master') ? $client->master : $client );
@@ -59,7 +59,17 @@ sub handler {
 	$params->{is_synced_slave} = ($client->can('isSynced') && $client->isSynced
 		&& $client->can('master') && $client->master != $client) ? 1 : 0;
 
-	return $class->SUPER::handler($client, $params);
+	my $result = $class->SUPER::handler($client, $params);
+
+	# An unticked checkbox isn't sent by the browser; store it as 0 so it
+	# reads as "off" rather than "not set" (which would mean the default)
+	if ( $params->{saveSettings} ) {
+		for my $name ( Plugins::AlbumMix::Plugin::playerBoolPrefNames() ) {
+			$cp->set($name, 0) unless $params->{"pref_$name"};
+		}
+	}
+
+	return $result;
 }
 
 1;
