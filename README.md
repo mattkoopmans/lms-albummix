@@ -12,7 +12,7 @@ A [Lyrion Music Server](https://lyrion.org/) plugin that creates continuous, dis
 2. What you started from plays first — the album, the track, or one of the artist's albums. Untick **Play the Starting Album or Track** to skip it and start straight away with the first similar album.
 3. About halfway through the last album in the queue (or, at the latest, when only **Queue Lookahead** tracks are left), the plugin picks a track from it and asks Last.fm for similar tracks, so the next album is queued well before the music runs out
 4. It works out which album each similar track belongs to and queues the first one that passes the checks below
-5. A short message says what was queued and why (e.g. *Queued Tusk — Fleetwood Mac, like "Dreams"*); the server log has the full reason
+5. To see why an album was queued, open the context menu (**More** / **⋮**) of any of its tracks and choose **Why This Album?**: it shows the similar track or artist that led to it, the Last.fm similarity, and where it was found (library, TIDAL or Spotify). Players with a screen also show a short message when an album is queued (e.g. *Queued Tusk — Fleetwood Mac, like "Dreams"*), and the server log has the full reason at Info level
 6. The process repeats — each queued album seeds the next
 
 ## How the next album is chosen
@@ -137,6 +137,10 @@ Switch back to the normal URL (`.../main/repo.xml`, see **Installation**) to ret
 - Online services: TIDAL is tested. Spotify (via Spotty) is supported but untested. Qobuz and Deezer are not supported yet
 
 ## Changelog
+
+### 2.0.1 (test build towards 2.1)
+- New **Why This Album?** entry in a track's context menu, for albums Album Mix queued on that player: the similar track or artist it came from, the Last.fm similarity and where it was found. Works in every interface (web, Material, apps, players); the last 100 albums per player are remembered until LMS restarts
+- Translated into all LMS languages
 
 ### 2.0
 Everything from the 1.9.x test builds, now as one release. Your 1.2 settings are carried over (see **Settings**).

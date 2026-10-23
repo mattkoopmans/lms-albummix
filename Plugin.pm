@@ -97,6 +97,12 @@ my $prefs = preferences('plugin.albummix');
 # Per-player state, keyed by client id
 my %playerState;
 
+# Why each album was queued, per player (kept when a new mix starts, so the
+# albums of an earlier mix still in the queue can be explained):
+# client id => { list => [ entries, oldest first ] }
+my %albumWhy;
+use constant MAX_WHY_PER_PLAYER => 100;
+
 sub initPlugin {
 	my $class = shift;
 
@@ -306,6 +312,20 @@ sub trackInfoHandler {
 
 	my @items = ( _menuItem($client, 'PLUGIN_ALBUM_MIX_CREATE_TRACK', 'start', \%params) );
 
+	# "Why This Album?" for a track in this player's queue whose album Album
+	# Mix queued here
+	my $albumArtist = $track && blessed($track) && eval { $track->album && $track->album->contributor && $track->album->contributor->name };
+	my $isCompilation = $track && blessed($track) && eval { $track->album && $track->album->compilation } ? 1 : 0;
+	my $why = ( defined $tags->{playlistIndex} || _inQueue($client, $url) )
+		&& ( _whyFor($client->master->id, $url, $params{album_name}, $isCompilation, $params{artist_name}, $albumArtist)
+		  || _whyFor($client->id, $url, $params{album_name}, $isCompilation, $params{artist_name}, $albumArtist) );
+	if ( $why ) {
+		unshift @items, {
+			name  => cstring($client, 'PLUGIN_ALBUM_MIX_WHY'),
+			items => [ map { +{ name => $_, type => 'text' } } _whyLines($client, $why) ],
+		};
+	}
+
 	# Radio streams never end, so an album added after one would never play
 	my $isStream = $track && blessed($track) && $track->can('remote') && $track->remote
 		&& !( $track->can('secs') && $track->secs );
@@ -495,6 +515,9 @@ sub _startMix {
 			return stopAlbumMix($client);
 		}
 		$state->{seedLoaded} = 1;
+		# (only that one track was loaded, not its whole album)
+		_rememberWhy($clientId, $seed->{artist}, $seed->{album}, undef, { kind => 'startTrack', track => $seed->{trackTitle}, onlyUrl => $seed->{trackUrl} })
+			if $seed->{album};
 		return;
 	}
 
@@ -513,15 +536,17 @@ sub _startMix {
 		$client->execute(['playlistcontrol', 'cmd:load', "album_id:$seed->{albumId}"]);
 		$state->{seedLoaded} = 1;
 		_recordPlayed($client, $seed->{artist}, $seed->{album});
+		_rememberWhy($clientId, $seed->{artist}, $seed->{album}, undef, { kind => 'start', foundIn => 'library' });
 		return;
 	}
 
 	_findAndPlayAlbum($client, $seed->{artist}, $seed->{album}, 'load', sub {
-		my $found = shift;
+		my ( $found, undef, $title, $foundIn ) = @_;
 		return unless _isCurrent($clientId, $state);
 		if ( $found ) {
 			$state->{seedLoaded} = 1;
 			_recordPlayed($client, $seed->{artist}, $seed->{album});
+			_rememberWhy($clientId, $seed->{artist}, $seed->{album}, $title, { kind => 'start', foundIn => $foundIn });
 			return;
 		}
 		$log->warn("Album Mix: Could not load the seed album '$seed->{album}' by '$seed->{artist}'");
@@ -632,9 +657,11 @@ sub _tryArtistStartAlbum {
 
 	my $album = $albums->[$i]->{name};
 	_findAndPlayAlbum($client, $artist, $album, 'load', sub {
-		my ( $found, undef, $title ) = @_;
+		my ( $found, undef, $title, $foundIn ) = @_;
 		return unless _isCurrent($clientId, $state);
 		return _tryArtistStartAlbum($client, $state, $artist, $albums, $i + 1) unless $found;
+
+		_rememberWhy($clientId, $artist, $album, $title, { kind => 'startArtist', foundIn => $foundIn });
 
 		$log->info("Album Mix: Starting with '$album' by '$artist'");
 		$state->{seedAlbum}  = $album;
@@ -1389,6 +1416,116 @@ sub _nothingFound {
 	stopAlbumMix($client) if $state->{firstLoad};
 }
 
+# ------------------------------------------------------------
+# "Why This Album?": the reason each album was queued, for the track menu
+# ------------------------------------------------------------
+
+# Remember why an album was queued on this player. $why is the same hash as
+# for the log and the pop-up ({ kind, track, trackArtist, seed, seedArtist,
+# match }), plus foundIn ('library', 'tidal', 'spotty') and dstm.
+sub _rememberWhy {
+	my ( $clientId, $artist, $album, $foundTitle, $why ) = @_;
+
+	return unless $clientId && defined $album && length $album;
+
+	my $entry = {
+		%{ $why || {} },
+		artist => $artist,
+		album  => $album,
+		keys   => { map { $_ => 1 } grep { length } map { _normaliseName($_) } grep { defined } $album, $foundTitle },
+		titles => { map { lc($_) => 1 } grep { defined && length } $album, $foundTitle },
+		artistKey => _nameKey($artist // ''),
+		time   => time(),
+	};
+
+	my $list = ( $albumWhy{$clientId} ||= { list => [] } )->{list};
+	@$list = grep { !( $_->{artistKey} eq $entry->{artistKey} && grep { $entry->{keys}->{$_} } keys %{ $_->{keys} } ) } @$list;
+	push @$list, $entry;
+	shift @$list while @$list > MAX_WHY_PER_PLAYER;
+}
+
+# Is this URL in the player's queue?
+sub _inQueue {
+	my ( $client, $url ) = @_;
+	return 0 unless $url;
+	my $count = Slim::Player::Playlist::count($client);
+	for my $i ( 0 .. $count - 1 ) {
+		return 1 if ( _trackUrl( Slim::Player::Playlist::track($client, $i) ) // '' ) eq $url;
+	}
+	return 0;
+}
+
+# The reason for the album of a track on this player, or undef. The album
+# title must match one Album Mix queued (exactly, or once normalised), and
+# the artist must be the album's artist or the track's artist, unless the
+# track is on a compilation. A start from a single track only applies to
+# that track.
+sub _whyFor {
+	my ( $clientId, $url, $album, $isCompilation, @artists ) = @_;
+
+	return unless $clientId && defined $album && length $album && $albumWhy{$clientId};
+
+	my %artist = map { _nameKey($_) => 1 } grep { defined && length } @artists;
+	my @mine = grep {
+		( !$_->{onlyUrl} || ( $url && $_->{onlyUrl} eq $url ) )
+		&& ( $isCompilation || $artist{ $_->{artistKey} } )
+	} reverse @{ $albumWhy{$clientId}->{list} };
+
+	my $exact = lc $album;
+	my ($hit) = grep { $_->{titles}->{$exact} } @mine;
+	return $hit if $hit;
+
+	my $key = _normaliseName($album);
+	return unless length $key;
+	($hit) = grep { $_->{keys}->{$key} } @mine;
+	return $hit;
+}
+
+# The lines shown under "Why This Album?"
+sub _whyLines {
+	my ( $client, $why ) = @_;
+
+	my $kind = $why->{kind} // '';
+	my @lines;
+
+	if ( $kind eq 'track' ) {
+		my $seed = $why->{seed};
+		push @lines, $seed
+			? sprintf(cstring($client, 'PLUGIN_ALBUM_MIX_WHY_TRACK'), $why->{track}, $why->{trackArtist}, $seed->{title}, $seed->{artist})
+			: sprintf(cstring($client, 'PLUGIN_ALBUM_MIX_WHY_TRACK_NO_SEED'), $why->{track}, $why->{trackArtist});
+	}
+	elsif ( $kind eq 'artist' ) {
+		push @lines, ( $why->{seedArtist} && _nameKey($why->{seedArtist}) ne _nameKey($why->{artist} // '') )
+			? sprintf(cstring($client, 'PLUGIN_ALBUM_MIX_WHY_ARTIST'), $why->{artist}, $why->{seedArtist})
+			: sprintf(cstring($client, 'PLUGIN_ALBUM_MIX_WHY_SAME_ARTIST'), $why->{artist});
+	}
+	elsif ( $kind eq 'start' || $kind eq 'startArtist' ) {
+		push @lines, cstring($client, $kind eq 'start' ? 'PLUGIN_ALBUM_MIX_WHY_START_ALBUM' : 'PLUGIN_ALBUM_MIX_WHY_START_ARTIST');
+	}
+	elsif ( $kind eq 'startTrack' ) {
+		push @lines, sprintf(cstring($client, 'PLUGIN_ALBUM_MIX_WHY_START_TRACK'), $why->{track} // '');
+	}
+
+	# (no similarity for another album by the same artist: Last.fm gave none)
+	my $sameArtist = $kind eq 'artist' && !( $why->{seedArtist} && _nameKey($why->{seedArtist}) ne _nameKey($why->{artist} // '') );
+	if ( ( $kind eq 'track' || ( $kind eq 'artist' && !$sameArtist ) ) && defined $why->{match} && $why->{match} =~ /^\s*\d*\.?\d+\s*$/ ) {
+		my $pct = int($why->{match} * 100 + 0.5);
+		$pct = 100 if $pct > 100;
+		push @lines, sprintf(cstring($client, 'PLUGIN_ALBUM_MIX_WHY_MATCH'), $pct);
+	}
+
+	if ( my $in = $why->{foundIn} ) {
+		my %service = ( tidal => 'TIDAL', spotty => 'Spotify' );
+		push @lines, $in eq 'library'
+			? cstring($client, 'PLUGIN_ALBUM_MIX_WHY_FROM_LIBRARY')
+			: sprintf(cstring($client, 'PLUGIN_ALBUM_MIX_WHY_FROM_ONLINE'), $service{$in} || $in);
+	}
+
+	push @lines, cstring($client, 'PLUGIN_ALBUM_MIX_WHY_DSTM') if $why->{dstm};
+
+	return @lines;
+}
+
 # Why an album was picked, for the log:
 #   track:  its track 'X' by Y is similar to 'Seed' by Z (match 0.83)
 #   artist: Y is an artist similar to Z (match 0.61)
@@ -1521,7 +1658,7 @@ sub _queueCandidate {
 	$log->info("Album Mix: Trying '$album' by '$artist' ($via)");
 
 	_findAndPlayAlbum($client, $artist, $album, $cmd, sub {
-		my ( $found, $reason, $matchedTitle ) = @_;
+		my ( $found, $reason, $matchedTitle, $foundIn ) = @_;
 
 		return unless _isCurrent($clientId, $state);
 
@@ -1564,6 +1701,12 @@ sub _queueCandidate {
 
 		$state->{pendingLookup} = 0;
 		$state->{gaveUp}        = 0;
+
+		_rememberWhy($clientId, $artist, $album, $matchedTitle, {
+			%{ $why || {} },
+			foundIn => $foundIn,
+			dstm    => $state->{dstm} ? 1 : 0,
+		});
 
 		_showBriefly($client, _whyPopup($client, $album, $artist, $why));
 		_dstmFinish($state, \@found);
@@ -2237,7 +2380,8 @@ sub _findAndPlayAlbum {
 			_awaitAlbum($client, $state, { cmd => $cmd, preCount => $preCount, preFirst => $preFirst, updated => $preTime }) if $online;
 		}
 
-		$callback->($found, $reason, $title);
+		# Where it was found: 'library', or the online service ('tidal', 'spotty')
+		$callback->($found, $reason, $title, $found ? ( $online || 'library' ) : undef);
 	};
 
 	my ( $localAlbumId, $localTitle ) = _findLocalAlbum($client, $artist, $album);
@@ -2299,10 +2443,10 @@ sub _findAndPlayAlbum {
 	}
 
 	_findOnlineAlbum($client, $artist, $album, $cmd, sub {
-		my ( $found, $reason, $title ) = @_;
+		my ( $found, $reason, $title, $service ) = @_;
 
 		if ( $found ) {
-			$done->(1, undef, $title, 1);
+			$done->(1, undef, $title, $service || 'online');
 		} elsif ( $reason ) {
 			# Not wanted any more (see isWanted) — don't fall back to the library
 			$done->(0, $reason);
@@ -2586,7 +2730,7 @@ sub _tryOnlineService {
 		return if $answered++;
 
 		if ( $found ) {
-			$callback->(1, undef, $title);
+			$callback->(1, undef, $title, $service);
 		} elsif ( $reason ) {
 			$callback->(0, $reason);
 		} else {

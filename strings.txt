@@ -1177,3 +1177,243 @@ PLUGIN_ALBUM_MIX_DSTM_NOTE
 	RU	Эти настройки также используются, когда Album Mix выбран в Don't Stop The Music: по окончании плей-листа добавляется похожий альбом.
 	SV	Dessa inställningar används också när Album Mix är valt under ”Stoppa inte musiken”: när en spellista tar slut läggs ett liknande album till.
 	ZH_CN	在 Don't Stop The Music 中选择 Album Mix 时，也使用这些设置：播放表结束时，会添加一张相似的专辑。
+
+PLUGIN_ALBUM_MIX_WHY
+	CS	Proč toto album?
+	DA	Hvorfor dette album?
+	DE	Warum dieses Album?
+	EN	Why This Album?
+	ES	¿Por qué este álbum?
+	FI	Miksi tämä levy?
+	FR	Pourquoi cet album ?
+	HE	למה האלבום הזה?
+	HU	Miért ez az album?
+	IT	Perché questo album?
+	JA	このアルバムが選ばれた理由
+	NL	Waarom dit album?
+	NO	Hvorfor dette albumet?
+	PL	Dlaczego ten album?
+	PT	Porquê este álbum?
+	RU	Почему этот альбом?
+	SV	Varför det här albumet?
+	ZH_CN	为何选此专辑？
+
+PLUGIN_ALBUM_MIX_WHY_TRACK
+	CS	Skladba z tohoto alba "%s" (interpret: %s) je podobná skladbě "%s" (interpret: %s).
+	DA	Nummeret "%s" af %s på dette album ligner "%s" af %s.
+	DE	Der Titel "%s" von %s auf diesem Album ähnelt "%s" von %s.
+	EN	Its track "%s" by %s is similar to "%s" by %s.
+	ES	Contiene la pista "%s" de %s, similar a "%s" de %s.
+	FI	Levyn raita "%s" (artisti: %s) on samankaltainen kuin "%s" (artisti: %s).
+	FR	Il contient la piste "%s" de %s, proche de "%s" de %s.
+	HE	באלבום זה, הרצועה "%s" של %s דומה ל-"%s" של %s.
+	HU	Az album "%s" című zeneszáma (előadó: %s) hasonló ehhez a zeneszámhoz: "%s" (előadó: %s).
+	IT	Contiene il brano "%s" di %s, simile a "%s" di %s.
+	JA	収録トラック「%s」（%s）は「%s」（%s）に類似しています。
+	NL	Het nummer "%s" van %s op dit album is vergelijkbaar met "%s" van %s.
+	NO	Sporet "%s" med %s på albumet ligner på "%s" med %s.
+	PL	Ścieżka z tego albumu "%s" (wykonawca: %s) jest podobna do ścieżki "%s" (wykonawca: %s).
+	PT	Contém a faixa "%s" de %s, semelhante a "%s" de %s.
+	RU	Дорожка с этого альбома "%s" (исполнитель: %s) похожа на дорожку "%s" (исполнитель: %s).
+	SV	Spåret "%s" med %s på albumet liknar "%s" med %s.
+	ZH_CN	其中的音轨“%s”（%s）类似于“%s”（%s）。
+
+PLUGIN_ALBUM_MIX_WHY_TRACK_NO_SEED
+	CS	Skladba z tohoto alba "%s" (interpret: %s) je podobná předchozí hudbě.
+	DA	Nummeret "%s" af %s på dette album ligner musikken før det.
+	DE	Der Titel "%s" von %s auf diesem Album ist ähnlich wie die Musik davor.
+	EN	Its track "%s" by %s is similar to the music before it.
+	ES	Contiene la pista "%s" de %s, similar a la música anterior.
+	FI	Levyn raita "%s" (artisti: %s) on samankaltainen kuin sitä edeltänyt musiikki.
+	FR	Il contient la piste "%s" de %s, proche de la musique qui la précède.
+	HE	באלבום זה, הרצועה "%s" של %s דומה למוזיקה שלפניה.
+	HU	Az album "%s" című zeneszáma (előadó: %s) hasonló az előtte szóló zenéhez.
+	IT	Contiene il brano "%s" di %s, simile alla musica precedente.
+	JA	収録トラック「%s」（%s）は、その前の音楽に類似しています。
+	NL	Het nummer "%s" van %s op dit album is vergelijkbaar met de muziek ervoor.
+	NO	Sporet "%s" med %s på albumet ligner på musikken før det.
+	PL	Ścieżka z tego albumu "%s" (wykonawca: %s) jest podobna do wcześniejszej muzyki.
+	PT	Contém a faixa "%s" de %s, semelhante à música anterior.
+	RU	Дорожка с этого альбома "%s" (исполнитель: %s) похожа на предыдущую музыку.
+	SV	Spåret "%s" med %s på albumet liknar musiken före det.
+	ZH_CN	其中的音轨“%s”（%s）类似于之前的音乐。
+
+PLUGIN_ALBUM_MIX_WHY_ARTIST
+	CS	%s je interpret podobný interpretovi: %s.
+	DA	%s er en kunstner, der ligner %s.
+	DE	%s ist ein ähnlicher Interpret wie %s.
+	EN	%s is an artist similar to %s.
+	ES	%s es un artista similar a %s.
+	FI	%s on samankaltainen kuin artisti %s.
+	FR	%s est un artiste proche de %s.
+	HE	%s הוא מבצע דומה ל-%s.
+	HU	%s hasonló ehhez az előadóhoz: %s.
+	IT	%s è un artista simile a %s.
+	JA	%s は %s の類似アーチストです。
+	NL	%s is een artiest vergelijkbaar met %s.
+	NO	%s er en artist som ligner på %s.
+	PL	%s to wykonawca podobny do: %s.
+	PT	%s é um artista semelhante a %s.
+	RU	%s — исполнитель, похожий на исполнителя: %s.
+	SV	%s är en artist som liknar %s.
+	ZH_CN	%s 是与 %s 相似的艺人。
+
+PLUGIN_ALBUM_MIX_WHY_SAME_ARTIST
+	CS	Další album interpreta, kterého mix sledoval: %s.
+	DA	Endnu et album af %s, den kunstner, mixet fulgte.
+	DE	Ein weiteres Album von %s, dem Interpreten, dem der Mix gefolgt ist.
+	EN	Another album by %s, the artist the mix was following.
+	ES	Otro álbum de %s, el artista que seguía la mezcla.
+	FI	Toinen levy artistilta, jota miksaus seurasi: %s.
+	FR	Un autre album de %s, l'artiste que suivait le mix.
+	HE	אלבום נוסף של %s, המבצע שהמיקס עקב אחריו.
+	HU	Egy másik album attól az előadótól, akit a mix követett: %s.
+	IT	Un altro album di %s, l'artista seguito dal mix.
+	JA	ミックスがたどっていたアーチスト、%s の別のアルバムです。
+	NL	Nog een album van %s, de artiest die de mix volgde.
+	NO	Enda et album med %s, artisten miksen fulgte.
+	PL	Kolejny album wykonawcy, za którym podążał miks: %s.
+	PT	Outro álbum de %s, o artista que o mix estava a seguir.
+	RU	Ещё один альбом исполнителя, которому следовал микс: %s.
+	SV	Ännu ett album med %s, artisten som mixen följde.
+	ZH_CN	混合播放所跟随的艺人 %s 的另一张专辑。
+
+PLUGIN_ALBUM_MIX_WHY_START_ALBUM
+	CS	Album Mix začal tímto albem.
+	DA	Album Mix startede fra dette album.
+	DE	Album Mix wurde mit diesem Album gestartet.
+	EN	Album Mix started from this album.
+	ES	Album Mix empezó a partir de este álbum.
+	FI	Album Mix aloitettiin tästä levystä.
+	FR	Album Mix a démarré à partir de cet album.
+	HE	Album Mix התחיל מאלבום זה.
+	HU	Az Album Mix kiindulópontja ez az album volt.
+	IT	Album Mix è partito da questo album.
+	JA	Album Mix はこのアルバムから開始しました。
+	NL	Album Mix is gestart vanaf dit album.
+	NO	Album Mix startet fra dette albumet.
+	PL	Album Mix rozpoczął się od tego albumu.
+	PT	O Album Mix começou a partir deste álbum.
+	RU	Album Mix начался с этого альбома.
+	SV	Album Mix startade från det här albumet.
+	ZH_CN	Album Mix 从此专辑开始。
+
+PLUGIN_ALBUM_MIX_WHY_START_ARTIST
+	CS	Album Mix začal tímto interpretem.
+	DA	Album Mix startede fra denne kunstner.
+	DE	Album Mix wurde mit diesem Interpreten gestartet.
+	EN	Album Mix started from this artist.
+	ES	Album Mix empezó a partir de este artista.
+	FI	Album Mix aloitettiin tästä artistista.
+	FR	Album Mix a démarré à partir de cet artiste.
+	HE	Album Mix התחיל ממבצע זה.
+	HU	Az Album Mix kiindulópontja ez az előadó volt.
+	IT	Album Mix è partito da questo artista.
+	JA	Album Mix はこのアーチストから開始しました。
+	NL	Album Mix is gestart vanaf deze artiest.
+	NO	Album Mix startet fra denne artisten.
+	PL	Album Mix rozpoczął się od tego wykonawcy.
+	PT	O Album Mix começou a partir deste artista.
+	RU	Album Mix начался с этого исполнителя.
+	SV	Album Mix startade från den här artisten.
+	ZH_CN	Album Mix 从此艺人开始。
+
+PLUGIN_ALBUM_MIX_WHY_START_TRACK
+	CS	Album Mix začal skladbou "%s".
+	DA	Album Mix startede fra nummeret "%s".
+	DE	Album Mix wurde mit dem Titel "%s" gestartet.
+	EN	Album Mix started from the track "%s".
+	ES	Album Mix empezó a partir de la pista "%s".
+	FI	Album Mix aloitettiin raidasta "%s".
+	FR	Album Mix a démarré à partir de la piste "%s".
+	HE	Album Mix התחיל מהרצועה "%s".
+	HU	Az Album Mix kiindulópontja ez a zeneszám volt: "%s".
+	IT	Album Mix è partito dal brano "%s".
+	JA	Album Mix はトラック「%s」から開始しました。
+	NL	Album Mix is gestart vanaf het nummer "%s".
+	NO	Album Mix startet fra sporet "%s".
+	PL	Album Mix rozpoczął się od ścieżki "%s".
+	PT	O Album Mix começou a partir da faixa "%s".
+	RU	Album Mix начался с дорожки "%s".
+	SV	Album Mix startade från spåret "%s".
+	ZH_CN	Album Mix 从音轨“%s”开始。
+
+PLUGIN_ALBUM_MIX_WHY_MATCH
+	CS	Podobnost podle Last.fm: %s %%
+	DA	Last.fm-lighed: %s %%
+	DE	Last.fm-Ähnlichkeit: %s %%
+	EN	Last.fm similarity: %s%%
+	ES	Similitud en Last.fm: %s%%
+	FI	Last.fm-samankaltaisuus: %s %%
+	FR	Similarité Last.fm : %s %%
+	HE	דמיון לפי Last.fm: %s%%
+	HU	Last.fm-hasonlóság: %s%%
+	IT	Somiglianza Last.fm: %s%%
+	JA	Last.fm 類似度: %s%%
+	NL	Last.fm-gelijkenis: %s%%
+	NO	Likhet ifølge Last.fm: %s %%
+	PL	Podobieństwo wg Last.fm: %s %%
+	PT	Semelhança no Last.fm: %s%%
+	RU	Сходство по Last.fm: %s %%
+	SV	Likhet enligt Last.fm: %s %%
+	ZH_CN	Last.fm 相似度：%s%%
+
+PLUGIN_ALBUM_MIX_WHY_FROM_LIBRARY
+	CS	Nalezeno ve vaší hudební knihovně
+	DA	Fundet i dit musikbibliotek
+	DE	In Ihrer Musikbibliothek gefunden
+	EN	Found in your library
+	ES	Encontrado en su biblioteca
+	FI	Löytyi musiikkikirjastostasi
+	FR	Trouvé dans votre bibliothèque
+	HE	נמצא בספרייה שלך
+	HU	Forrás: az Ön zenekönyvtára
+	IT	Trovato nella libreria musicale
+	JA	ライブラリで見つかりました
+	NL	Gevonden in je muziekbibliotheek
+	NO	Funnet i musikkbiblioteket ditt
+	PL	Znaleziono w Twojej bibliotece muzyki
+	PT	Encontrado na sua biblioteca
+	RU	Найдено в вашей медиатеке
+	SV	Hittades i ditt musikbibliotek
+	ZH_CN	在您的音乐库中找到
+
+PLUGIN_ALBUM_MIX_WHY_FROM_ONLINE
+	CS	Nalezeno ve službě %s
+	DA	Fundet på %s
+	DE	Bei %s gefunden
+	EN	Found on %s
+	ES	Encontrado en %s
+	FI	Löytyi palvelusta %s
+	FR	Trouvé sur %s
+	HE	נמצא ב-%s
+	HU	Forrás: %s
+	IT	Trovato su %s
+	JA	%s で見つかりました
+	NL	Gevonden op %s
+	NO	Funnet på %s
+	PL	Znaleziono w usłudze %s
+	PT	Encontrado em %s
+	RU	Найдено в службе %s
+	SV	Hittades på %s
+	ZH_CN	在 %s 上找到
+
+PLUGIN_ALBUM_MIX_WHY_DSTM
+	CS	Přidáno modulem „Nezastavuj přehrávání hudby“
+	DA	Tilføjet af »Aldrig stop musikken«
+	DE	Von "Musikwiedergabe nie anhalten" hinzugefügt
+	EN	Added for Don't Stop The Music
+	ES	Añadido para Don't Stop The Music
+	FI	Lisätty Don't Stop The Music -toiminnolla
+	FR	Ajouté pour « N'arrêtez pas la musique »
+	HE	נוסף עבור Don't Stop The Music
+	HU	A "Ne hagyja abba a zenét" funkció adta hozzá
+	IT	Aggiunto per Don't Stop The Music
+	JA	Don't Stop The Music により追加
+	NL	Toegevoegd door Don't Stop The Music
+	NO	Lagt til av «Ikke stopp musikken»
+	PL	Dodano przez Don't Stop The Music
+	PT	Adicionado para Don't Stop The Music
+	RU	Добавлено функцией Don't Stop The Music
+	SV	Tillagt av ”Stoppa inte musiken”
+	ZH_CN	由 Don't Stop The Music 添加
