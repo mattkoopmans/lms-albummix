@@ -202,7 +202,7 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`):
 1. Update `<version>` in `install.xml` and the changelog above, then commit and push the branch
 2. Tag and push, e.g. `git tag v2.0.1 && git push origin v2.0.1`
 
-The workflow builds the zip, attaches it to the release, checks the download, and only then updates `repo.xml`:
+The workflow builds the zip, attaches it to the release, checks the download, and only then updates `repo.xml`. The zip is also committed to `releases/` on `main`, and `repo.xml` links to that copy on raw.githubusercontent.com, because LMS can't download from GitHub release links (GitHub's reply has a header line longer than LMS accepts):
 
 - a tag on a commit that is on `main` is a normal release and updates `repo.xml`
 - a tag on a commit that is only on `Testing` is a pre-release and updates `repo-testing.xml`

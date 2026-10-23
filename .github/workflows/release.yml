@@ -1,5 +1,7 @@
 # Builds the AlbumMix plugin zip, attaches it to the GitHub release,
-# checks the download works, and only then updates repo.xml.
+# checks the download works, and only then updates repo.xml. The zip is also
+# committed to releases/ on main, and repo.xml links to that copy on
+# raw.githubusercontent.com: LMS can't download GitHub release links.
 #
 # Which repository file is updated depends on where the tagged commit is:
 #   on main     -> normal release, repo.xml
@@ -160,9 +162,19 @@ jobs:
             exit 0
           fi
 
+          # LMS can't download from GitHub release links (GitHub's reply has a
+          # header line longer than the 8,192 characters LMS accepts), so the
+          # published zip is also kept on main and served from
+          # raw.githubusercontent.com, whose headers are short
+          mkdir -p releases
+          cp check.zip "releases/$ZIPFILE"
+          git add "releases/$ZIPFILE"
+          RAW_URL="https://raw.githubusercontent.com/$REPO/main/releases/$ZIPFILE"
+          echo "RAW_URL=$RAW_URL" >> "$GITHUB_ENV"
+
           sed -i -E \
             -e "s|(<plugin name=\"AlbumMix\" version=\")[^\"]*|\1$VERSION|" \
-            -e "s|<url>[^<]*</url>|<url>$URL</url>|" \
+            -e "s|<url>[^<]*</url>|<url>$RAW_URL</url>|" \
             -e "s|<sha>[^<]*</sha>|<sha>$SHA</sha>|" \
             "$REPO_FILE"
           git add "$REPO_FILE"
@@ -177,3 +189,24 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "$REPO_FILE: publish $TAG (sha1 $SHA)"
           git push origin main
+
+      - name: Check the download link in the repository file works
+        run: |
+          [ -n "$RAW_URL" ] || exit 0
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            curl -fsSL -o raw-check.zip "$RAW_URL" && break
+            echo "Not available yet, retrying in 10s..."
+            sleep 10
+          done
+          GOT=$(sha1sum raw-check.zip | cut -d' ' -f1)
+          if [ "$GOT" != "$SHA" ]; then
+            echo "::error::$RAW_URL has SHA $GOT, expected $SHA"
+            exit 1
+          fi
+          # LMS stops at header lines over 8,192 characters
+          LONGEST=$(curl -sS -o /dev/null -D - "$RAW_URL" | awk '{ if (length($0) > m) m = length($0) } END { print m + 0 }')
+          if [ "$LONGEST" -gt 8000 ]; then
+            echo "::error::$RAW_URL answers with a $LONGEST-character header line; LMS can't download it"
+            exit 1
+          fi
+          echo "$RAW_URL works (SHA matches, longest header line $LONGEST characters)."
