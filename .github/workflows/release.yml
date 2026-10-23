@@ -86,12 +86,16 @@ jobs:
       - name: Build plugin zip (AlbumMix/ folder at the top)
         run: |
           mkdir -p build/AlbumMix
-          cp Plugin.pm Settings.pm install.xml strings.txt LICENSE build/AlbumMix/
+          # every Perl module (Plugin.pm, Settings.pm, PlayerSettings.pm, ...)
+          cp *.pm install.xml strings.txt LICENSE build/AlbumMix/
           cp -r HTML build/AlbumMix/
           (cd build && zip -rX "../$ZIPFILE" AlbumMix)
           # (the variable is ZIPFILE, not ZIP: zip reads $ZIP as extra options)
           unzip -l "$ZIPFILE" | tee zip-contents.txt
           grep -q ' AlbumMix/install.xml$' zip-contents.txt || { echo "::error::Zip layout is wrong"; exit 1; }
+          for f in *.pm; do
+            grep -q " AlbumMix/$f\$" zip-contents.txt || { echo "::error::$f is missing from the zip"; exit 1; }
+          done
           SHA=$(sha1sum "$ZIPFILE" | cut -d' ' -f1)
           echo "SHA=$SHA" >> "$GITHUB_ENV"
           echo "SHA1: $SHA"
