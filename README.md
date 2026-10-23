@@ -138,40 +138,41 @@ Switch back to the normal URL (`.../main/repo.xml`, see **Installation**) to ret
 
 ## Changelog
 
-### 1.9.5 (development build towards 2.0)
-- Album Mix can be the provider for Don't Stop The Music (see **Don't Stop The Music**), using each player's Album Mix settings
-- For a queue that ends with a playlist of different artists, it starts from one of the last 5 tracks at random
-- Don't Stop The Music holds off on a player while your own Album Mix runs there
-- The settings pages say that the settings also apply to Don't Stop The Music (translated)
+### 2.0
+Everything from the 1.9.x test builds, now as one release. Your 1.2 settings are carried over (see **Settings**).
 
-### 1.9.4 (development build towards 2.0)
-- Translated into every language LMS itself supports (Czech, Danish, Dutch, Finnish, French, German, Hebrew, Hungarian, Italian, Japanese, Norwegian, Polish, Portuguese, Russian, Simplified Chinese, Spanish and Swedish), using LMS's own words for its menus. Corrections from native speakers are welcome
-- Saved Last.fm answers are kept in the server's cache folder (albummix-lastfm.json), so they survive a restart
-- At most two Last.fm requests run at once, with real lookups ahead of fetching in advance, so Last.fm's rate limit isn't hit; a request isn't retried once it is 30 seconds old
-- An online service (TIDAL, Spotify) that doesn't answer a search within 20 seconds is skipped and the next one is tried; its late answer can't add a second album
-- While an album found online is still being added to the queue, no further album is looked up, so two albums can't be queued at once. If it hasn't appeared after 60 seconds, the mix looks for another one
-
-### 1.9.3 (development build towards 2.0)
-- Faster, more reliable Last.fm lookups: answers are kept for a while (similar tracks, similar artists and top albums for a day, album details for a week; only the parts the plugin uses, to save memory) instead of being asked again, a question already on its way isn't sent twice, and a request that fails for a passing reason (network, Last.fm busy or offline) is retried twice before giving up
-- The albums of the next few candidate tracks are looked up in advance, so picking an album takes fewer round trips
-- The next album is looked up about halfway through the current one, rather than when only Queue Lookahead tracks (2 by default) are left, so the queue is much less likely to run out on short albums or slow lookups. Queue Lookahead is now the latest point for the lookup
-- All Last.fm requests go through one place in the code
-
-### 1.9.2 (development build towards 2.0)
+**Starting a mix**
 - Start a mix from a track, an artist, or the song playing now (**Continue as Album Mix**), as well as from an album
 - New per-player setting **Play the Starting Album or Track**: untick it to skip the seed and start with the first similar album
-- The pop-up says why each album was queued (*like "song"* or *similar artist to …*), and the log gives the full reason including the Last.fm match score
-- A message appears when the Last.fm API key is missing, instead of the mix silently doing nothing
 
-### 1.9.1 (development build towards 2.0)
-- Fixed: the Source choices showed no names in the settings pages (seen in Material Skin)
-
-### 1.9.0 (development build towards 2.0)
-- Per-player settings: each player can use its own Source, Skip filters, Minimum Tracks, Variety, Artist Cooldown and Queue Lookahead, or the server defaults. Synced players use the main player's settings
+**Settings**
+- Per-player settings: each player can use its own Source, Skip filters, Minimum Tracks, Variety, Artist Cooldown, Queue Lookahead and Play the Starting Album or Track, or the server defaults. Synced players use the main player's settings
 - New **Source** setting (Library only / Library first / Online first / Online only) replaces Prefer Local Library and Discovery Mode; set automatically from them when upgrading
 - New **Library only** option: the mix never searches online services
 - **Saved History** can be shared by all players (as before) or kept separately for each player
 - The Last.fm API key, album history size and repeat days stay server-wide
+
+**Don't Stop The Music**
+- Album Mix can be the provider for LMS's Don't Stop The Music (see **Don't Stop The Music**), using each player's Album Mix settings
+- For a queue that ends with a playlist of different artists, it starts from one of the last 5 tracks at random
+- Don't Stop The Music holds off on a player while your own Album Mix runs there
+- The settings pages say that the settings also apply to Don't Stop The Music
+
+**Choosing and queuing albums**
+- The next album is looked up about halfway through the last album in the queue, rather than when only Queue Lookahead tracks (2 by default) are left, so the queue is much less likely to run out on short albums or slow lookups. Queue Lookahead is now the latest point for the lookup
+- The pop-up says why each album was queued (*like "song"* or *similar artist to …*), and the log gives the full reason including the Last.fm match score
+- While an album found online is still being added to the queue, no further album is looked up, so two albums can't be queued at once. If it hasn't appeared after 60 seconds, the mix looks for another one
+- An online service (TIDAL, Spotify) that doesn't answer a search within 20 seconds is skipped and the next one is tried; its late answer can't add a second album
+
+**Faster, more reliable Last.fm lookups**
+- Answers are kept for a while (similar tracks, similar artists and top albums for a day, album details for a week; only the parts the plugin uses, to save memory) instead of being asked again, and are saved in the server's cache folder (albummix-lastfm.json), so they survive a restart
+- A question already on its way isn't sent twice, and a request that fails for a passing reason (network, Last.fm busy or offline) is retried twice before giving up; a request isn't retried once it is 30 seconds old
+- The albums of the next few candidate tracks are looked up in advance, so picking an album takes fewer round trips
+- At most two Last.fm requests run at once, with real lookups ahead of fetching in advance, so Last.fm's rate limit isn't hit
+- A message appears when the Last.fm API key is missing, instead of the mix silently doing nothing
+
+**Languages**
+- Translated into every language LMS itself supports (Czech, Danish, Dutch, Finnish, French, German, Hebrew, Hungarian, Italian, Japanese, Norwegian, Polish, Portuguese, Russian, Simplified Chinese, Spanish and Swedish), using LMS's own words for its menus. Corrections from native speakers are welcome
 
 ### 1.2
 - Skips compilations, live albums, singles, EPs and remix releases (each can be turned off), plus releases with too few tracks
@@ -199,7 +200,7 @@ Switch back to the normal URL (`.../main/repo.xml`, see **Installation**) to ret
 Releases are built by GitHub Actions (`.github/workflows/release.yml`):
 
 1. Update `<version>` in `install.xml` and the changelog above, then commit and push the branch
-2. Tag and push, e.g. `git tag v1.2.0 && git push origin v1.2.0`
+2. Tag and push, e.g. `git tag v2.0.1 && git push origin v2.0.1`
 
 The workflow builds the zip, attaches it to the release, checks the download, and only then updates `repo.xml`:
 
@@ -208,7 +209,7 @@ The workflow builds the zip, attaches it to the release, checks the download, an
 
 Both files are on `main` (the workflow commits them there), so merging `Testing` into `main` never publishes a test version by accident. Push the branch before the tag, and pull before your next push to `main`. Don't edit the version, URL or SHA in either file by hand.
 
-Work happens on `Development`. To publish a test build, merge `Development` into `Testing` and tag there; a tag on `Development` alone is refused. Test builds towards 2.0 are numbered 1.9.0, 1.9.1, … — plain numbers, so LMS always sees them as newer than 1.2 and older than 2.0. A published tag is never reused: a fix gets the next number.
+Work happens on `Development`. To publish a test build, merge `Development` into `Testing` and tag there; a tag on `Development` alone is refused. Test builds are numbered between releases with plain numbers (2.0 was prepared as 1.9.0 … 1.9.5), so LMS always sees them as newer than the last release and older than the next one. A published tag is never reused: a fix gets the next number.
 
 To promote a tested version: merge `Testing` into `main` and push, then in the **Actions** tab run **Release** for the same tag. It reuses the zip you tested (same SHA), turns the pre-release into a normal release and updates `repo.xml`.
 
