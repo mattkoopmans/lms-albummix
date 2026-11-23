@@ -4,12 +4,12 @@
     <title lang="EN">Album Mix plugin repository (testing)</title>
   </details>
   <plugins>
-    <plugin name="AlbumMix" version="2.0" minTarget="8.0" maxTarget="*">
+    <plugin name="AlbumMix" version="2.1" minTarget="8.0" maxTarget="*">
       <title lang="EN">Album Mix</title>
       <desc lang="EN">Creates continuous, discovery-driven playlists from any seed album using Last.fm track similarity. Plays albums from your local library or online services (TIDAL, Spotify).</desc>
       <category>playlists</category>
-      <url>https://raw.githubusercontent.com/mattkoopmans/lms-albummix/main/releases/AlbumMix-2.0.zip</url>
-      <sha>73ca1b5f90cbd483f35512479b63189629cfe109</sha>
+      <url>https://raw.githubusercontent.com/mattkoopmans/lms-albummix/main/releases/AlbumMix-2.1.zip</url>
+      <sha>3eff5eaf03873c96e0a0fd733390a5f42bb19d49</sha>
       <creator>Matt Koopmans</creator>
       <link>https://github.com/mattkoopmans/lms-albummix</link>
     </plugin>
