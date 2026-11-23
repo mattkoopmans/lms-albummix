@@ -2675,6 +2675,9 @@ sub _getAvailableServices {
 	push @services, 'spotty'
 		if Slim::Utils::PluginManager->isEnabled('Plugins::Spotty::Plugin');
 
+	push @services, 'spoton'
+		if Slim::Utils::PluginManager->isEnabled('Plugins::SpotOn::Plugin');
+
 	# Qobuz and Deezer: detected but no search handler yet
 	# push @services, 'qobuz'
 	#	if Slim::Utils::PluginManager->isEnabled('Plugins::Qobuz::Plugin');
@@ -2700,6 +2703,7 @@ sub _tryOnlineService {
 
 	my $handler = {
 		spotty => \&_searchSpotty,
+		spoton => \&_searchSpotOn,
 		tidal  => \&_searchTidal,
 	}->{$service};
 
@@ -2805,6 +2809,85 @@ sub _searchSpotty {
 
 	if ( $@ ) {
 		$log->debug("Album Mix: Spotty search error: $@");
+		$callback->(0);
+	}
+}
+
+sub _searchSpotOn {
+	my ( $client, $artist, $album, $cmd, $done, $opts ) = @_;
+
+	$opts ||= {};
+	my $isWanted  = $opts->{isWanted};
+	my $minTracks = $opts->{minTracks} || 0;
+
+	my $answered = 0;
+	my $callback = sub { $done->(@_) unless $answered++ };
+
+	eval {
+		require Plugins::SpotOn::API::SpClient;
+
+		# Get the active SpotOn account for this player
+		my $spotonPrefs = preferences('plugin.spoton');
+		my $accountId = eval { $spotonPrefs->client($client)->get('activeAccount') }
+			|| $spotonPrefs->get('activeAccount')
+			|| '';
+
+		unless ( $accountId ) {
+			$log->info("Album Mix: SpotOn has no active account");
+			$callback->(0);
+			return;
+		}
+
+		$log->info("Album Mix: Searching SpotOn for '$album' by '$artist'");
+
+		Plugins::SpotOn::API::SpClient->search($accountId, {
+			q      => 'album:' . _searchTitle($album) . " artist:$artist",
+			type   => 'album',
+			limit  => 10,
+			offset => 0,
+		}, sub {
+			my ( $data, $err ) = @_;
+
+			my @items;
+			if ( ref $data eq 'HASH' && $data->{albums} && ref $data->{albums} eq 'HASH' && $data->{albums}->{items} ) {
+				@items = grep { $_->{uri} } @{ $data->{albums}->{items} };
+			}
+
+			# Too short to count as an album (singles/EP filter)
+			# Note: SpotOn search results may not include total_tracks;
+			# filter only when the field is present
+			@items = grep {
+				!$minTracks || !defined $_->{total_tracks} || $_->{total_tracks} >= $minTracks
+			} @items;
+
+			# Not a filtered release type (compilation/live/single)
+			@items = grep { !_releaseType($client, $_->{name}) } @items if $opts->{checkType};
+
+			my $match = _bestAlbumMatch($artist, $album, \@items,
+				sub { $_[0]->{name} },
+				sub { $_[0]->{artists} && $_[0]->{artists}->[0] ? $_[0]->{artists}->[0]->{name} : '' },
+			);
+
+			if ( $match && $isWanted && !$isWanted->() ) {
+				$log->info("Album Mix: SpotOn result for '$album' arrived too late, not adding it");
+				$callback->(0, 'no longer wanted');
+				return;
+			}
+
+			if ( $match ) {
+				$log->info("Album Mix: Found on SpotOn: $match->{name}");
+				_sendAlbum($client, $cmd, $match->{uri}, $opts);
+				$callback->(1, undef, $match->{name});
+				return;
+			}
+
+			$log->info("Album Mix: No matching album found on SpotOn");
+			$callback->(0);
+		});
+	};
+
+	if ( $@ ) {
+		$log->debug("Album Mix: SpotOn search error: $@");
 		$callback->(0);
 	}
 }
