@@ -140,8 +140,6 @@ Switch back to the normal URL (`.../main/repo.xml`, see **Installation**) to ret
 
 ### 2.1
 - Added SpotOn as an online album search source — users with the SpotOn plugin (alternative Spotify plugin) can now discover albums online without needing Spotty installed
-
-### 2.0.1 (test build towards 2.1)
 - New **Why This Album?** entry in a track's context menu, for albums Album Mix queued on that player: the similar track or artist it came from, the Last.fm similarity and where it was found. Works in every interface (web, Material, apps, players); the last 100 albums per player are remembered until LMS restarts
 - Translated into all LMS languages
 
