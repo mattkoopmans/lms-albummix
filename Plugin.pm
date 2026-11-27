@@ -2684,6 +2684,8 @@ sub _getAvailableServices {
 	# push @services, 'deezer'
 	#	if Slim::Utils::PluginManager->isEnabled('Plugins::Deezer::Plugin');
 
+	$log->info("Album Mix: Available online services: " . ( @services ? join(', ', @services) : 'none' ));
+
 	return @services;
 }
 
@@ -2808,7 +2810,7 @@ sub _searchSpotty {
 	};
 
 	if ( $@ ) {
-		$log->debug("Album Mix: Spotty search error: $@");
+		$log->warn("Album Mix: Spotty search error: $@");
 		$callback->(0);
 	}
 }
@@ -2887,7 +2889,7 @@ sub _searchSpotOn {
 	};
 
 	if ( $@ ) {
-		$log->debug("Album Mix: SpotOn search error: $@");
+		$log->warn("Album Mix: SpotOn search error: $@");
 		$callback->(0);
 	}
 }
